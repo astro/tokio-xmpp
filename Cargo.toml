@@ -1,0 +1,9 @@
+[package]
+name = "tokio-xmpp"
+version = "0.1.0"
+authors = ["Astro <astro@spaceboyz.net>"]
+
+[dependencies]
+futures = "0.1.6"
+tokio-core = "0.1.1"
+RustyXML = "0.1.1"
