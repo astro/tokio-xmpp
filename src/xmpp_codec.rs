@@ -2,7 +2,7 @@ use std;
 use std::str::from_utf8;
 use std::io::{Error, ErrorKind};
 use std::collections::HashMap;
-use tokio_core::io::{Codec, EasyBuf};
+use tokio_core::io::{Codec, EasyBuf, Framed};
 use xml;
 
 const NS_XMLNS: &'static str = "http://www.w3.org/2000/xmlns/";
@@ -51,6 +51,8 @@ pub enum Packet {
     StreamEnd,
 }
 
+pub type XMPPStream<T> = Framed<T, XMPPCodec>;
+
 pub struct XMPPCodec {
     parser: xml::Parser,
     root: Option<XMPPRoot>,
@@ -70,6 +72,7 @@ impl Codec for XMPPCodec {
     type Out = Packet;
 
     fn decode(&mut self, buf: &mut EasyBuf) -> Result<Option<Self::In>, Error> {
+        println!("XMPPCodec.decode {:?}", buf.len());
         match from_utf8(buf.as_slice()) {
             Ok(s) =>
                 self.parser.feed_str(s),
