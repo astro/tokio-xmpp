@@ -76,7 +76,7 @@ impl Future for TcpClient {
             TcpClientState::RecvStart(ref mut opt_xmpp_stream) => {
                 let mut xmpp_stream = opt_xmpp_stream.take().unwrap();
                 match xmpp_stream.poll() {
-                    Ok(Async::Ready(Some(events))) => println!("Recv start: {:?}", events),
+                    Ok(Async::Ready(Some(Packet::StreamStart))) => println!("Recv start!"),
                     Ok(Async::Ready(_)) => return Err(std::io::Error::from(ErrorKind::InvalidData)),
                     Ok(Async::NotReady) => {
                         *opt_xmpp_stream = Some(xmpp_stream);
