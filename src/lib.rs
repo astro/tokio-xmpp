@@ -105,6 +105,7 @@ impl Future for TcpClient {
 mod tests {
     use tokio_core::reactor::Core;
     use futures::{Future, Stream};
+    use xmpp_codec::Packet;
 
     #[test]
     fn it_works() {
@@ -118,8 +119,12 @@ mod tests {
             &addr,
             &core.handle()
         ).and_then(|stream| {
-            stream.for_each(|item| {
-                Ok(println!("stream item: {:?}", item))
+            stream.for_each(|event| {
+                match event {
+                    Packet::Stanza(el) => println!("<< {}", el),
+                    _ => println!("!! {:?}", event),
+                }
+                Ok(())
             })
         });
         core.run(client).unwrap();

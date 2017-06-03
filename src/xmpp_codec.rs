@@ -85,12 +85,12 @@ impl Codec for XMPPCodec {
         let mut new_root = None;
         let mut result = None;
         for event in &mut self.parser {
-            match &mut self.root {
-                &mut None => {
+            match self.root {
+                None => {
                     // Expecting <stream:stream>
                     match event {
                         Ok(xml::Event::ElementStart(start_tag)) => {
-                            new_root = Some(XMPPRoot::new(start_tag));
+                            self.root = Some(XMPPRoot::new(start_tag));
                             result = Some(Packet::StreamStart);
                             break
                         },
@@ -103,7 +103,7 @@ impl Codec for XMPPCodec {
                     }
                 }
 
-                &mut Some(ref mut root) => {
+                Some(ref mut root) => {
                     match root.handle_event(event) {
                         None => (),
                         Some(Ok(stanza)) => {
