@@ -3,6 +3,7 @@ use std::fmt::Write;
 use std::str::from_utf8;
 use std::io::{Error, ErrorKind};
 use std::collections::HashMap;
+use tokio_io::{AsyncRead, AsyncWrite};
 use tokio_io::codec::{Framed, Encoder, Decoder};
 use xml;
 use bytes::*;
@@ -66,6 +67,12 @@ impl XMPPCodec {
             parser: xml::Parser::new(),
             root: None,
         }
+    }
+
+    pub fn frame_stream<S>(stream: S) -> Framed<S, XMPPCodec>
+        where S: AsyncRead + AsyncWrite
+    {
+        AsyncRead::framed(stream, XMPPCodec::new())
     }
 }
 
@@ -146,6 +153,9 @@ impl Encoder for XMPPCodec {
                        NS_CLIENT, NS_STREAMS)
                     .map_err(|_| Error::from(ErrorKind::WriteZero))
             },
+            Packet::Stanza(stanza) =>
+                write!(dst, "{}", stanza)
+                .map_err(|_| Error::from(ErrorKind::InvalidInput)),
             // TODO: Implement all
             _ => Ok(())
         }

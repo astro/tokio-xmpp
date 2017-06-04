@@ -1,10 +1,15 @@
 extern crate futures;
 extern crate tokio_core;
 extern crate tokio_xmpp;
+extern crate rustls;
 
+use std::sync::Arc;
+use std::io::BufReader;
+use std::fs::File;
 use tokio_core::reactor::Core;
 use futures::{Future, Stream};
-use tokio_xmpp::{Packet, TcpClient};
+use tokio_xmpp::{Packet, TcpClient, StartTlsClient};
+use rustls::ClientConfig;
 
 fn main() {
     use std::net::ToSocketAddrs;
@@ -12,10 +17,16 @@ fn main() {
         .to_socket_addrs().unwrap()
         .next().unwrap();
 
+    let mut config = ClientConfig::new();
+    let mut certfile = BufReader::new(File::open("/usr/share/ca-certificates/CAcert/root.crt").unwrap());
+    config.root_store.add_pem_file(&mut certfile).unwrap();
+    let arc_config = Arc::new(config);
+
     let mut core = Core::new().unwrap();
     let client = TcpClient::connect(
         &addr,
         &core.handle()
+    ).and_then(|stream| StartTlsClient::from_stream(stream, arc_config)
     ).and_then(|stream| {
         stream.for_each(|event| {
             match event {
@@ -25,5 +36,11 @@ fn main() {
             Ok(())
         })
     });
-    core.run(client).unwrap();
+    match core.run(client) {
+        Ok(_) => (),
+        Err(e) => {
+            println!("Fatal: {}", e);
+            ()
+        }
+    }
 }
