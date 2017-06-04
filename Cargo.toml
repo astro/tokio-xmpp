@@ -6,4 +6,6 @@ authors = ["Astro <astro@spaceboyz.net>"]
 [dependencies]
 futures = "*"
 tokio-core = "*"
+tokio-io = "*"
+bytes = "*"
 RustyXML = "*"

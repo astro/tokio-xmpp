@@ -1,16 +1,12 @@
 use std::fmt;
 use std::net::SocketAddr;
-use std::net::ToSocketAddrs;
-use std::sync::Arc;
 use std::io::{Error, ErrorKind};
-use futures::{Future, BoxFuture, Sink, Poll, Async};
-use futures::stream::{Stream, iter};
+use futures::{Future, Sink, Poll, Async};
+use futures::stream::Stream;
 use futures::sink;
 use tokio_core::reactor::Handle;
-use tokio_core::io::Io;
+use tokio_io::AsyncRead;
 use tokio_core::net::{TcpStream, TcpStreamNew};
-use rustls::ClientConfig;
-use tokio_rustls::ClientConfigExt;
 
 use super::{XMPPStream, XMPPCodec, Packet};
 
@@ -25,7 +21,6 @@ enum TcpClientState {
     SendStart(sink::Send<XMPPStream<TcpStream>>),
     RecvStart(Option<XMPPStream<TcpStream>>),
     Established,
-    Invalid,
 }
 
 impl fmt::Debug for TcpClientState {
@@ -35,9 +30,9 @@ impl fmt::Debug for TcpClientState {
             TcpClientState::SendStart(_) => "SendStart",
             TcpClientState::RecvStart(_) => "RecvStart",
             TcpClientState::Established => "Established",
-            TcpClientState::Invalid => "Invalid",
         };
-        write!(fmt, "{}", s)
+        try!(write!(fmt, "{}", s));
+        Ok(())
     }
 }
 
@@ -58,7 +53,7 @@ impl Future for TcpClient {
         let (new_state, result) = match self.state {
             TcpClientState::Connecting(ref mut tcp_stream_new) => {
                 let tcp_stream = try_ready!(tcp_stream_new.poll());
-                let xmpp_stream = tcp_stream.framed(XMPPCodec::new());
+                let xmpp_stream = AsyncRead::framed(tcp_stream, XMPPCodec::new());
                 let send = xmpp_stream.send(Packet::StreamStart);
                 let new_state = TcpClientState::SendStart(send);
                 (new_state, Ok(Async::NotReady))
@@ -82,7 +77,7 @@ impl Future for TcpClient {
                 let new_state = TcpClientState::Established;
                 (new_state, Ok(Async::Ready(xmpp_stream)))
             },
-            TcpClientState::Established | TcpClientState::Invalid =>
+            TcpClientState::Established =>
                 unreachable!(),
         };
 
