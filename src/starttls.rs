@@ -4,7 +4,7 @@ use std::sync::Arc;
 use futures::{Future, Sink, Poll, Async};
 use futures::stream::Stream;
 use futures::sink;
-use tokio_core::net::TcpStream;
+use tokio_io::{AsyncRead, AsyncWrite};
 use rustls::*;
 use tokio_rustls::*;
 use xml;
@@ -15,22 +15,22 @@ use super::{XMPPStream, XMPPCodec, Packet};
 const NS_XMPP_STREAM: &str = "http://etherx.jabber.org/streams";
 const NS_XMPP_TLS: &str = "urn:ietf:params:xml:ns:xmpp-tls";
 
-pub struct StartTlsClient {
-    state: StartTlsClientState,
+pub struct StartTlsClient<S: AsyncWrite> {
+    state: StartTlsClientState<S>,
     arc_config: Arc<ClientConfig>,
 }
 
-enum StartTlsClientState {
+enum StartTlsClientState<S: AsyncWrite> {
     Invalid,
-    AwaitFeatures(XMPPStream<TcpStream>),
-    SendStartTls(sink::Send<XMPPStream<TcpStream>>),
-    AwaitProceed(XMPPStream<TcpStream>),
-    StartingTls(ConnectAsync<TcpStream>),
+    AwaitFeatures(XMPPStream<S>),
+    SendStartTls(sink::Send<XMPPStream<S>>),
+    AwaitProceed(XMPPStream<S>),
+    StartingTls(ConnectAsync<S>),
 }
 
-impl StartTlsClient {
+impl<S: AsyncWrite> StartTlsClient<S> {
     /// Waits for <stream:features>
-    pub fn from_stream(xmpp_stream: XMPPStream<TcpStream>, arc_config: Arc<ClientConfig>) -> Self {
+    pub fn from_stream(xmpp_stream: XMPPStream<S>, arc_config: Arc<ClientConfig>) -> Self {
         StartTlsClient {
             state: StartTlsClientState::AwaitFeatures(xmpp_stream),
             arc_config: arc_config,
@@ -39,8 +39,8 @@ impl StartTlsClient {
 }
 
 // TODO: eval <stream:features>, check ns
-impl Future for StartTlsClient {
-    type Item = XMPPStream<TlsStream<TcpStream, ClientSession>>;
+impl<S: AsyncRead + AsyncWrite> Future for StartTlsClient<S> {
+    type Item = XMPPStream<TlsStream<S, ClientSession>>;
     type Error = Error;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
