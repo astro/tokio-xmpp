@@ -31,6 +31,13 @@ impl<S: AsyncRead + AsyncWrite> XMPPStream<S> {
         self.stream.into_inner()
     }
 
+    pub fn restart(self) -> StreamStart<S> {
+        let to = self.stream_attrs.get("from")
+            .map(|s| s.to_owned())
+            .unwrap_or_else(|| "".to_owned());
+        Self::from_stream(self.into_inner(), to.clone())
+    }
+
     pub fn can_starttls(&self) -> bool {
         self.stream_features
             .get_child("starttls", Some(NS_XMPP_TLS))
