@@ -8,7 +8,8 @@ use std::io::BufReader;
 use std::fs::File;
 use tokio_core::reactor::Core;
 use futures::{Future, Stream};
-use tokio_xmpp::{Packet, TcpClient, StartTlsClient};
+use tokio_xmpp::TcpClient;
+use tokio_xmpp::xmpp_codec::Packet;
 use rustls::ClientConfig;
 
 fn main() {
@@ -26,8 +27,13 @@ fn main() {
     let client = TcpClient::connect(
         &addr,
         &core.handle()
-    ).and_then(|stream| StartTlsClient::from_stream(stream, arc_config)
     ).and_then(|stream| {
+        if stream.can_starttls() {
+            stream.starttls(arc_config)
+        } else {
+            panic!("No STARTTLS")
+        }
+    }).and_then(|stream| {
         stream.for_each(|event| {
             match event {
                 Packet::Stanza(el) => println!("<< {}", el),

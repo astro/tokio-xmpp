@@ -8,8 +8,9 @@ extern crate rustls;
 extern crate tokio_rustls;
 
 
-mod xmpp_codec;
-pub use xmpp_codec::*;
+pub mod xmpp_codec;
+pub mod xmpp_stream;
+mod stream_start;
 mod tcp;
 pub use tcp::*;
 mod starttls;

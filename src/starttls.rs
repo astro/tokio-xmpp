@@ -1,5 +1,5 @@
 use std::mem::replace;
-use std::io::{Error, ErrorKind};
+use std::io::Error;
 use std::sync::Arc;
 use futures::{Future, Sink, Poll, Async};
 use futures::stream::Stream;
@@ -9,36 +9,44 @@ use rustls::*;
 use tokio_rustls::*;
 use xml;
 
-use super::{XMPPStream, XMPPCodec, Packet};
+use xmpp_codec::*;
+use xmpp_stream::*;
+use stream_start::StreamStart;
 
 
-const NS_XMPP_STREAM: &str = "http://etherx.jabber.org/streams";
-const NS_XMPP_TLS: &str = "urn:ietf:params:xml:ns:xmpp-tls";
+pub const NS_XMPP_TLS: &str = "urn:ietf:params:xml:ns:xmpp-tls";
 
-pub struct StartTlsClient<S: AsyncWrite> {
+pub struct StartTlsClient<S: AsyncRead + AsyncWrite> {
     state: StartTlsClientState<S>,
     arc_config: Arc<ClientConfig>,
 }
 
-enum StartTlsClientState<S: AsyncWrite> {
+enum StartTlsClientState<S: AsyncRead + AsyncWrite> {
     Invalid,
-    AwaitFeatures(XMPPStream<S>),
     SendStartTls(sink::Send<XMPPStream<S>>),
     AwaitProceed(XMPPStream<S>),
     StartingTls(ConnectAsync<S>),
+    Start(StreamStart<TlsStream<S, ClientSession>>),
 }
 
-impl<S: AsyncWrite> StartTlsClient<S> {
+impl<S: AsyncRead + AsyncWrite> StartTlsClient<S> {
     /// Waits for <stream:features>
     pub fn from_stream(xmpp_stream: XMPPStream<S>, arc_config: Arc<ClientConfig>) -> Self {
+        let nonza = xml::Element::new(
+            "starttls".to_owned(), Some(NS_XMPP_TLS.to_owned()),
+            vec![]
+        );
+        println!("send {}", nonza);
+        let packet = Packet::Stanza(nonza);
+        let send = xmpp_stream.send(packet);
+
         StartTlsClient {
-            state: StartTlsClientState::AwaitFeatures(xmpp_stream),
+            state: StartTlsClientState::SendStartTls(send),
             arc_config: arc_config,
         }
     }
 }
 
-// TODO: eval <stream:features>, check ns
 impl<S: AsyncRead + AsyncWrite> Future for StartTlsClient<S> {
     type Item = XMPPStream<TlsStream<S, ClientSession>>;
     type Error = Error;
@@ -48,40 +56,6 @@ impl<S: AsyncRead + AsyncWrite> Future for StartTlsClient<S> {
         let mut retry = false;
         
         let (new_state, result) = match old_state {
-            StartTlsClientState::AwaitFeatures(mut xmpp_stream) =>
-                match xmpp_stream.poll() {
-                    Ok(Async::Ready(Some(Packet::Stanza(ref stanza))))
-                        if stanza.name == "features"
-                        && stanza.ns == Some(NS_XMPP_STREAM.to_owned())
-                        =>
-                    {
-                        println!("Got features: {}", stanza);
-                        match stanza.get_child("starttls", Some(NS_XMPP_TLS)) {
-                            None =>
-                                (StartTlsClientState::Invalid, Err(Error::from(ErrorKind::InvalidData))),
-                            Some(_) => {
-                                let nonza = xml::Element::new(
-                                    "starttls".to_owned(), Some(NS_XMPP_TLS.to_owned()),
-                                    vec![]
-                                );
-                                println!("send {}", nonza);
-                                let packet = Packet::Stanza(nonza);
-                                let send = xmpp_stream.send(packet);
-                                let new_state = StartTlsClientState::SendStartTls(send);
-                                retry = true;
-                                (new_state, Ok(Async::NotReady))
-                            },
-                        }
-                    },
-                    Ok(Async::Ready(value)) => {
-                        println!("StartTlsClient ignore {:?}", value);
-                        (StartTlsClientState::AwaitFeatures(xmpp_stream), Ok(Async::NotReady))
-                    },
-                    Ok(_) =>
-                        (StartTlsClientState::AwaitFeatures(xmpp_stream), Ok(Async::NotReady)),
-                    Err(e) =>
-                        (StartTlsClientState::AwaitFeatures(xmpp_stream), Err(e)),
-                },
             StartTlsClientState::SendStartTls(mut send) =>
                 match send.poll() {
                     Ok(Async::Ready(xmpp_stream)) => {
@@ -109,7 +83,7 @@ impl<S: AsyncRead + AsyncWrite> Future for StartTlsClient<S> {
                     },
                     Ok(Async::Ready(value)) => {
                         println!("StartTlsClient ignore {:?}", value);
-                        (StartTlsClientState::AwaitFeatures(xmpp_stream), Ok(Async::NotReady))
+                        (StartTlsClientState::AwaitProceed(xmpp_stream), Ok(Async::NotReady))
                     },
                     Ok(_) =>
                         (StartTlsClientState::AwaitProceed(xmpp_stream), Ok(Async::NotReady)),
@@ -120,13 +94,24 @@ impl<S: AsyncRead + AsyncWrite> Future for StartTlsClient<S> {
                 match connect.poll() {
                     Ok(Async::Ready(tls_stream)) => {
                         println!("Got a TLS stream!");
-                        let xmpp_stream = XMPPCodec::frame_stream(tls_stream);
-                        (StartTlsClientState::Invalid, Ok(Async::Ready(xmpp_stream)))
+                        let start = XMPPStream::from_stream(tls_stream, "spaceboyz.net".to_owned());
+                        let new_state = StartTlsClientState::Start(start);
+                        retry = true;
+                        (new_state, Ok(Async::NotReady))
                     },
                     Ok(Async::NotReady) =>
                         (StartTlsClientState::StartingTls(connect), Ok(Async::NotReady)),
                     Err(e) =>
                         (StartTlsClientState::StartingTls(connect),  Err(e)),
+                },
+            StartTlsClientState::Start(mut start) =>
+                match start.poll() {
+                    Ok(Async::Ready(xmpp_stream)) =>
+                        (StartTlsClientState::Invalid, Ok(Async::Ready(xmpp_stream))),
+                    Ok(Async::NotReady) =>
+                        (StartTlsClientState::Start(start), Ok(Async::NotReady)),
+                    Err(e) =>
+                        (StartTlsClientState::Invalid, Err(e)),
                 },
             StartTlsClientState::Invalid =>
                 unreachable!(),

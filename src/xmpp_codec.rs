@@ -3,18 +3,17 @@ use std::fmt::Write;
 use std::str::from_utf8;
 use std::io::{Error, ErrorKind};
 use std::collections::HashMap;
-use tokio_io::{AsyncRead, AsyncWrite};
-use tokio_io::codec::{Framed, Encoder, Decoder};
+use tokio_io::codec::{Encoder, Decoder};
 use xml;
 use bytes::*;
 
 const NS_XMLNS: &'static str = "http://www.w3.org/2000/xmlns/";
-const NS_STREAMS: &'static str = "http://etherx.jabber.org/streams";
-const NS_CLIENT: &'static str = "jabber:client";
+
+pub type Attributes = HashMap<(String, Option<String>), String>;
 
 struct XMPPRoot {
     builder: xml::ElementBuilder,
-    pub attributes: HashMap<(String, Option<String>), String>,
+    pub attributes: Attributes,
 }
 
 impl XMPPRoot {
@@ -49,12 +48,10 @@ impl XMPPRoot {
 #[derive(Debug)]
 pub enum Packet {
     Error(Box<std::error::Error>),
-    StreamStart,
+    StreamStart(HashMap<String, String>),
     Stanza(xml::Element),
     StreamEnd,
 }
-
-pub type XMPPStream<T> = Framed<T, XMPPCodec>;
 
 pub struct XMPPCodec {
     parser: xml::Parser,
@@ -67,12 +64,6 @@ impl XMPPCodec {
             parser: xml::Parser::new(),
             root: None,
         }
-    }
-
-    pub fn frame_stream<S>(stream: S) -> Framed<S, XMPPCodec>
-        where S: AsyncRead + AsyncWrite
-    {
-        AsyncRead::framed(stream, XMPPCodec::new())
     }
 }
 
@@ -97,8 +88,12 @@ impl Decoder for XMPPCodec {
                     // Expecting <stream:stream>
                     match event {
                         Ok(xml::Event::ElementStart(start_tag)) => {
+                            let mut attrs: HashMap<String, String> = HashMap::new();
+                            for (&(ref name, _), value) in &start_tag.attributes {
+                                attrs.insert(name.to_owned(), value.to_owned());
+                            }
+                            result = Some(Packet::StreamStart(attrs));
                             self.root = Some(XMPPRoot::new(start_tag));
-                            result = Some(Packet::StreamStart);
                             break
                         },
                         Err(e) => {
@@ -146,18 +141,23 @@ impl Encoder for XMPPCodec {
 
     fn encode(&mut self, item: Self::Item, dst: &mut BytesMut) -> Result<(), Self::Error> {
         match item {
-            Packet::StreamStart => {
-                write!(dst,
-                       "<?xml version='1.0'?>\n
-<stream:stream version='1.0' to='spaceboyz.net' xmlns='{}' xmlns:stream='{}'>\n",
-                       NS_CLIENT, NS_STREAMS)
-                    .map_err(|_| Error::from(ErrorKind::WriteZero))
+            Packet::StreamStart(start_attrs) => {
+                let mut buf = String::new();
+                write!(buf, "<stream:stream").unwrap();
+                for (ref name, ref value) in &start_attrs {
+                    write!(buf, " {}=\"{}\"", xml::escape(&name), xml::escape(&value))
+                        .unwrap();
+                }
+                write!(buf, ">\n").unwrap();
+
+                println!("Encode start to {}", buf);
+                write!(dst, "{}", buf)
             },
             Packet::Stanza(stanza) =>
-                write!(dst, "{}", stanza)
-                .map_err(|_| Error::from(ErrorKind::InvalidInput)),
+                write!(dst, "{}", stanza),
             // TODO: Implement all
             _ => Ok(())
         }
+        .map_err(|_| Error::from(ErrorKind::InvalidInput))
     }
 }
