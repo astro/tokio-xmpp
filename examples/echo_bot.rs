@@ -33,6 +33,9 @@ fn main() {
         } else {
             panic!("No STARTTLS")
         }
+    }).map_err(|e| format!("{}", e)
+    ).and_then(|stream| {
+        stream.auth("astrobot", "").expect("auth")
     }).and_then(|stream| {
         stream.for_each(|event| {
             match event {
@@ -40,7 +43,7 @@ fn main() {
                 _ => println!("!! {:?}", event),
             }
             Ok(())
-        })
+        }).map_err(|e| format!("{}", e))
     });
     match core.run(client) {
         Ok(_) => (),

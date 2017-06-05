@@ -1,3 +1,4 @@
+use std::default::Default;
 use std::sync::Arc;
 use std::collections::HashMap;
 use futures::*;
@@ -5,10 +6,12 @@ use tokio_io::{AsyncRead, AsyncWrite};
 use tokio_io::codec::Framed;
 use rustls::ClientConfig;
 use xml;
+use sasl::common::Credentials;
 
 use xmpp_codec::*;
 use stream_start::*;
 use starttls::{NS_XMPP_TLS, StartTlsClient};
+use client_auth::ClientAuth;
 
 pub const NS_XMPP_STREAM: &str = "http://etherx.jabber.org/streams";
 
@@ -37,8 +40,16 @@ impl<S: AsyncRead + AsyncWrite> XMPPStream<S> {
     pub fn starttls(self, arc_config: Arc<ClientConfig>) -> StartTlsClient<S> {
         StartTlsClient::from_stream(self, arc_config)
     }
+
+    pub fn auth(self, username: &str, password: &str) -> Result<ClientAuth<S>, String> {
+        let creds = Credentials::default()
+            .with_username(username)
+            .with_password(password);
+        ClientAuth::new(self, creds)
+    }
 }
 
+/// Proxy to self.stream
 impl<S: AsyncWrite> Sink for XMPPStream<S> {
     type SinkItem = <Framed<S, XMPPCodec> as Sink>::SinkItem;
     type SinkError = <Framed<S, XMPPCodec> as Sink>::SinkError;
@@ -52,6 +63,7 @@ impl<S: AsyncWrite> Sink for XMPPStream<S> {
     }
 }
 
+/// Proxy to self.stream
 impl<S: AsyncRead> Stream for XMPPStream<S> {
     type Item = <Framed<S, XMPPCodec> as Stream>::Item;
     type Error = <Framed<S, XMPPCodec> as Stream>::Error;

@@ -6,6 +6,8 @@ extern crate bytes;
 extern crate xml;
 extern crate rustls;
 extern crate tokio_rustls;
+extern crate sasl;
+extern crate rustc_serialize as serialize;
 
 
 pub mod xmpp_codec;
@@ -15,6 +17,8 @@ mod tcp;
 pub use tcp::*;
 mod starttls;
 pub use starttls::*;
+mod client_auth;
+pub use client_auth::*;
 
 
 // type FullClient = sasl::Client<StartTLS<TCPConnection>>
