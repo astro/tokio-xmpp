@@ -4,8 +4,8 @@ extern crate tokio_core;
 extern crate tokio_io;
 extern crate bytes;
 extern crate xml;
-extern crate rustls;
-extern crate tokio_rustls;
+extern crate native_tls;
+extern crate tokio_tls;
 extern crate sasl;
 extern crate rustc_serialize as serialize;
 

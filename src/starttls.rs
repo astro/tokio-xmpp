@@ -1,12 +1,10 @@
 use std::mem::replace;
-use std::io::Error;
-use std::sync::Arc;
 use futures::{Future, Sink, Poll, Async};
 use futures::stream::Stream;
 use futures::sink;
 use tokio_io::{AsyncRead, AsyncWrite};
-use rustls::*;
-use tokio_rustls::*;
+use tokio_tls::*;
+use native_tls::TlsConnector;
 use xml;
 
 use xmpp_codec::*;
@@ -18,7 +16,7 @@ pub const NS_XMPP_TLS: &str = "urn:ietf:params:xml:ns:xmpp-tls";
 
 pub struct StartTlsClient<S: AsyncRead + AsyncWrite> {
     state: StartTlsClientState<S>,
-    arc_config: Arc<ClientConfig>,
+    domain: String,
 }
 
 enum StartTlsClientState<S: AsyncRead + AsyncWrite> {
@@ -26,12 +24,16 @@ enum StartTlsClientState<S: AsyncRead + AsyncWrite> {
     SendStartTls(sink::Send<XMPPStream<S>>),
     AwaitProceed(XMPPStream<S>),
     StartingTls(ConnectAsync<S>),
-    Start(StreamStart<TlsStream<S, ClientSession>>),
+    Start(StreamStart<TlsStream<S>>),
 }
 
 impl<S: AsyncRead + AsyncWrite> StartTlsClient<S> {
     /// Waits for <stream:features>
-    pub fn from_stream(xmpp_stream: XMPPStream<S>, arc_config: Arc<ClientConfig>) -> Self {
+    pub fn from_stream(xmpp_stream: XMPPStream<S>) -> Self {
+        let domain = xmpp_stream.stream_attrs.get("from")
+            .map(|s| s.to_owned())
+            .unwrap_or_else(|| String::new());
+
         let nonza = xml::Element::new(
             "starttls".to_owned(), Some(NS_XMPP_TLS.to_owned()),
             vec![]
@@ -42,14 +44,14 @@ impl<S: AsyncRead + AsyncWrite> StartTlsClient<S> {
 
         StartTlsClient {
             state: StartTlsClientState::SendStartTls(send),
-            arc_config: arc_config,
+            domain,
         }
     }
 }
 
 impl<S: AsyncRead + AsyncWrite> Future for StartTlsClient<S> {
-    type Item = XMPPStream<TlsStream<S, ClientSession>>;
-    type Error = Error;
+    type Item = XMPPStream<TlsStream<S>>;
+    type Error = String;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         let old_state = replace(&mut self.state, StartTlsClientState::Invalid);
@@ -67,7 +69,7 @@ impl<S: AsyncRead + AsyncWrite> Future for StartTlsClient<S> {
                     Ok(Async::NotReady) =>
                         (StartTlsClientState::SendStartTls(send), Ok(Async::NotReady)),
                     Err(e) =>
-                        (StartTlsClientState::SendStartTls(send), Err(e)),
+                        (StartTlsClientState::SendStartTls(send), Err(format!("{}", e))),
                 },
             StartTlsClientState::AwaitProceed(mut xmpp_stream) =>
                 match xmpp_stream.poll() {
@@ -76,7 +78,9 @@ impl<S: AsyncRead + AsyncWrite> Future for StartTlsClient<S> {
                     {
                         println!("* proceed *");
                         let stream = xmpp_stream.into_inner();
-                        let connect = self.arc_config.connect_async("spaceboyz.net", stream);
+                        let connect = TlsConnector::builder().unwrap()
+                            .build().unwrap()
+                            .connect_async(&self.domain, stream);
                         let new_state = StartTlsClientState::StartingTls(connect);
                         retry = true;
                         (new_state, Ok(Async::NotReady))
@@ -88,13 +92,13 @@ impl<S: AsyncRead + AsyncWrite> Future for StartTlsClient<S> {
                     Ok(_) =>
                         (StartTlsClientState::AwaitProceed(xmpp_stream), Ok(Async::NotReady)),
                     Err(e) =>
-                        (StartTlsClientState::AwaitProceed(xmpp_stream),  Err(e)),
+                        (StartTlsClientState::AwaitProceed(xmpp_stream),  Err(format!("{}", e))),
                 },
             StartTlsClientState::StartingTls(mut connect) =>
                 match connect.poll() {
                     Ok(Async::Ready(tls_stream)) => {
                         println!("Got a TLS stream!");
-                        let start = XMPPStream::from_stream(tls_stream, "spaceboyz.net".to_owned());
+                        let start = XMPPStream::from_stream(tls_stream, self.domain.clone());
                         let new_state = StartTlsClientState::Start(start);
                         retry = true;
                         (new_state, Ok(Async::NotReady))
@@ -102,7 +106,7 @@ impl<S: AsyncRead + AsyncWrite> Future for StartTlsClient<S> {
                     Ok(Async::NotReady) =>
                         (StartTlsClientState::StartingTls(connect), Ok(Async::NotReady)),
                     Err(e) =>
-                        (StartTlsClientState::StartingTls(connect),  Err(e)),
+                        (StartTlsClientState::StartingTls(connect),  Err(format!("{}", e))),
                 },
             StartTlsClientState::Start(mut start) =>
                 match start.poll() {
@@ -111,7 +115,7 @@ impl<S: AsyncRead + AsyncWrite> Future for StartTlsClient<S> {
                     Ok(Async::NotReady) =>
                         (StartTlsClientState::Start(start), Ok(Async::NotReady)),
                     Err(e) =>
-                        (StartTlsClientState::Invalid, Err(e)),
+                        (StartTlsClientState::Invalid, Err(format!("{}", e))),
                 },
             StartTlsClientState::Invalid =>
                 unreachable!(),

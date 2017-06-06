@@ -1,10 +1,8 @@
 use std::default::Default;
-use std::sync::Arc;
 use std::collections::HashMap;
 use futures::*;
 use tokio_io::{AsyncRead, AsyncWrite};
 use tokio_io::codec::Framed;
-use rustls::ClientConfig;
 use xml;
 use sasl::common::Credentials;
 
@@ -44,8 +42,8 @@ impl<S: AsyncRead + AsyncWrite> XMPPStream<S> {
             .is_some()
     }
 
-    pub fn starttls(self, arc_config: Arc<ClientConfig>) -> StartTlsClient<S> {
-        StartTlsClient::from_stream(self, arc_config)
+    pub fn starttls(self) -> StartTlsClient<S> {
+        StartTlsClient::from_stream(self)
     }
 
     pub fn auth(self, username: &str, password: &str) -> Result<ClientAuth<S>, String> {
