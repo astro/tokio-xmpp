@@ -75,7 +75,7 @@ impl<S: AsyncRead + AsyncWrite> Future for StreamStart<S> {
                     Ok(Async::Ready(Some(Packet::Stanza(stanza)))) =>
                         if stanza.name == "features"
                         && stanza.ns == Some(NS_XMPP_STREAM.to_owned()) {
-                            (StreamStartState::Invalid, Ok(Async::Ready(XMPPStream { stream, stream_attrs, stream_features: stanza })))
+                            (StreamStartState::Invalid, Ok(Async::Ready(XMPPStream::new(stream, stream_attrs, stanza))))
                         } else {
                             (StreamStartState::RecvFeatures(stream, stream_attrs), Ok(Async::NotReady))
                         },
