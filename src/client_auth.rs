@@ -15,19 +15,19 @@ use stream_start::*;
 
 const NS_XMPP_SASL: &str = "urn:ietf:params:xml:ns:xmpp-sasl";
 
-pub struct ClientAuth<S: AsyncWrite> {
+pub struct ClientAuth<S: AsyncRead + AsyncWrite> {
     state: ClientAuthState<S>,
     mechanism: Box<Mechanism>,
 }
 
-enum ClientAuthState<S: AsyncWrite> {
+enum ClientAuthState<S: AsyncRead + AsyncWrite> {
     WaitSend(sink::Send<XMPPStream<S>>),
     WaitRecv(XMPPStream<S>),
     Start(StreamStart<S>),
     Invalid,
 }
 
-impl<S: AsyncWrite> ClientAuth<S> {
+impl<S: AsyncRead + AsyncWrite> ClientAuth<S> {
     pub fn new(stream: XMPPStream<S>, creds: Credentials) -> Result<Self, String> {
         let mechs: Vec<Box<Mechanism>> = vec![
             Box::new(Scram::<Sha256>::from_credentials(creds.clone()).unwrap()),

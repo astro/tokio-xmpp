@@ -8,8 +8,10 @@ extern crate native_tls;
 extern crate tokio_tls;
 extern crate sasl;
 extern crate rustc_serialize as serialize;
+extern crate rand;
 
 
+pub mod iq;
 pub mod xmpp_codec;
 pub mod xmpp_stream;
 mod stream_start;
