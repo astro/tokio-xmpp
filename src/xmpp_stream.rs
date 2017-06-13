@@ -5,6 +5,7 @@ use tokio_io::{AsyncRead, AsyncWrite};
 use tokio_io::codec::Framed;
 use xml;
 use sasl::common::Credentials;
+use jid::Jid;
 
 use xmpp_codec::*;
 use stream_start::*;
@@ -14,15 +15,23 @@ use client_auth::ClientAuth;
 pub const NS_XMPP_STREAM: &str = "http://etherx.jabber.org/streams";
 
 pub struct XMPPStream<S> {
+    pub jid: Jid,
     pub stream: Framed<S, XMPPCodec>,
     pub stream_attrs: HashMap<String, String>,
     pub stream_features: xml::Element,
 }
 
 impl<S: AsyncRead + AsyncWrite> XMPPStream<S> {
-    pub fn from_stream(stream: S, to: String) -> StreamStart<S> {
+    pub fn new(jid: Jid,
+               stream: Framed<S, XMPPCodec>,
+               stream_attrs: HashMap<String, String>,
+               stream_features: xml::Element) -> Self {
+        XMPPStream { jid, stream, stream_attrs, stream_features }
+    }
+
+    pub fn from_stream(stream: S, jid: Jid) -> StreamStart<S> {
         let xmpp_stream = AsyncRead::framed(stream, XMPPCodec::new());
-        StreamStart::from_stream(xmpp_stream, to)
+        StreamStart::from_stream(xmpp_stream, jid)
     }
 
     pub fn into_inner(self) -> S {
@@ -30,10 +39,7 @@ impl<S: AsyncRead + AsyncWrite> XMPPStream<S> {
     }
 
     pub fn restart(self) -> StreamStart<S> {
-        let to = self.stream_attrs.get("from")
-            .map(|s| s.to_owned())
-            .unwrap_or_else(|| "".to_owned());
-        Self::from_stream(self.into_inner(), to.clone())
+        Self::from_stream(self.stream.into_inner(), self.jid)
     }
 
     pub fn can_starttls(&self) -> bool {
@@ -46,7 +52,7 @@ impl<S: AsyncRead + AsyncWrite> XMPPStream<S> {
         StartTlsClient::from_stream(self)
     }
 
-    pub fn auth(self, username: &str, password: &str) -> Result<ClientAuth<S>, String> {
+    pub fn auth(self, username: String, password: String) -> Result<ClientAuth<S>, String> {
         let creds = Credentials::default()
             .with_username(username)
             .with_password(password);

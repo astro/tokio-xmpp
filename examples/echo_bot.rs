@@ -1,13 +1,19 @@
 extern crate futures;
 extern crate tokio_core;
 extern crate tokio_xmpp;
+extern crate jid;
 
+use std::str::FromStr;
 use tokio_core::reactor::Core;
 use futures::{Future, Stream};
 use tokio_xmpp::TcpClient;
 use tokio_xmpp::xmpp_codec::Packet;
+use jid::Jid;
 
 fn main() {
+    let jid = Jid::from_str("astrobot@example.net").expect("JID");
+    let password = "".to_owned();
+
     use std::net::ToSocketAddrs;
     let addr = "[2a01:4f8:a0:33d0::5]:5222"
         .to_socket_addrs().unwrap()
@@ -15,6 +21,7 @@ fn main() {
 
     let mut core = Core::new().unwrap();
     let client = TcpClient::connect(
+        jid.clone(),
         &addr,
         &core.handle()
     ).map_err(|e| format!("{}", e)
@@ -25,7 +32,8 @@ fn main() {
             panic!("No STARTTLS")
         }
     }).and_then(|stream| {
-        stream.auth("astrobot", "").expect("auth")
+        let username = jid.node.as_ref().unwrap().to_owned();
+        stream.auth(username, password).expect("auth")
     }).and_then(|stream| {
         stream.for_each(|event| {
             match event {

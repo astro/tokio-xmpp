@@ -6,6 +6,7 @@ use tokio_io::{AsyncRead, AsyncWrite};
 use tokio_tls::*;
 use native_tls::TlsConnector;
 use xml;
+use jid::Jid;
 
 use xmpp_codec::*;
 use xmpp_stream::*;
@@ -16,7 +17,7 @@ pub const NS_XMPP_TLS: &str = "urn:ietf:params:xml:ns:xmpp-tls";
 
 pub struct StartTlsClient<S: AsyncRead + AsyncWrite> {
     state: StartTlsClientState<S>,
-    domain: String,
+    jid: Jid,
 }
 
 enum StartTlsClientState<S: AsyncRead + AsyncWrite> {
@@ -30,9 +31,7 @@ enum StartTlsClientState<S: AsyncRead + AsyncWrite> {
 impl<S: AsyncRead + AsyncWrite> StartTlsClient<S> {
     /// Waits for <stream:features>
     pub fn from_stream(xmpp_stream: XMPPStream<S>) -> Self {
-        let domain = xmpp_stream.stream_attrs.get("from")
-            .map(|s| s.to_owned())
-            .unwrap_or_else(|| String::new());
+        let jid = xmpp_stream.jid.clone();
 
         let nonza = xml::Element::new(
             "starttls".to_owned(), Some(NS_XMPP_TLS.to_owned()),
@@ -44,7 +43,7 @@ impl<S: AsyncRead + AsyncWrite> StartTlsClient<S> {
 
         StartTlsClient {
             state: StartTlsClientState::SendStartTls(send),
-            domain,
+            jid,
         }
     }
 }
@@ -77,10 +76,10 @@ impl<S: AsyncRead + AsyncWrite> Future for StartTlsClient<S> {
                         if stanza.name == "proceed" =>
                     {
                         println!("* proceed *");
-                        let stream = xmpp_stream.into_inner();
+                        let stream = xmpp_stream.stream.into_inner();
                         let connect = TlsConnector::builder().unwrap()
                             .build().unwrap()
-                            .connect_async(&self.domain, stream);
+                            .connect_async(&self.jid.domain, stream);
                         let new_state = StartTlsClientState::StartingTls(connect);
                         retry = true;
                         (new_state, Ok(Async::NotReady))
@@ -98,7 +97,7 @@ impl<S: AsyncRead + AsyncWrite> Future for StartTlsClient<S> {
                 match connect.poll() {
                     Ok(Async::Ready(tls_stream)) => {
                         println!("Got a TLS stream!");
-                        let start = XMPPStream::from_stream(tls_stream, self.domain.clone());
+                        let start = XMPPStream::from_stream(tls_stream, self.jid.clone());
                         let new_state = StartTlsClientState::Start(start);
                         retry = true;
                         (new_state, Ok(Async::NotReady))

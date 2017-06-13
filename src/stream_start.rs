@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use futures::*;
 use tokio_io::{AsyncRead, AsyncWrite};
 use tokio_io::codec::Framed;
+use jid::Jid;
 
 use xmpp_codec::*;
 use xmpp_stream::*;
@@ -12,6 +13,7 @@ const NS_XMPP_STREAM: &str = "http://etherx.jabber.org/streams";
 
 pub struct StreamStart<S: AsyncWrite> {
     state: StreamStartState<S>,
+    jid: Jid,
 }
 
 enum StreamStartState<S: AsyncWrite> {
@@ -22,8 +24,8 @@ enum StreamStartState<S: AsyncWrite> {
 }
 
 impl<S: AsyncWrite> StreamStart<S> {
-    pub fn from_stream(stream: Framed<S, XMPPCodec>, to: String) -> Self {
-        let attrs = [("to".to_owned(), to),
+    pub fn from_stream(stream: Framed<S, XMPPCodec>, jid: Jid) -> Self {
+        let attrs = [("to".to_owned(), jid.domain.clone()),
                      ("version".to_owned(), "1.0".to_owned()),
                      ("xmlns".to_owned(), "jabber:client".to_owned()),
                      ("xmlns:stream".to_owned(), NS_XMPP_STREAM.to_owned()),
@@ -32,6 +34,7 @@ impl<S: AsyncWrite> StreamStart<S> {
 
         StreamStart {
             state: StreamStartState::SendStart(send),
+            jid,
         }
     }
 }
@@ -75,7 +78,8 @@ impl<S: AsyncRead + AsyncWrite> Future for StreamStart<S> {
                     Ok(Async::Ready(Some(Packet::Stanza(stanza)))) =>
                         if stanza.name == "features"
                         && stanza.ns == Some(NS_XMPP_STREAM.to_owned()) {
-                            (StreamStartState::Invalid, Ok(Async::Ready(XMPPStream::new(stream, stream_attrs, stanza))))
+                            let stream = XMPPStream::new(self.jid.clone(), stream, stream_attrs, stanza);
+                            (StreamStartState::Invalid, Ok(Async::Ready(stream)))
                         } else {
                             (StreamStartState::RecvFeatures(stream, stream_attrs), Ok(Async::NotReady))
                         },
