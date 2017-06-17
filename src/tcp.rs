@@ -51,10 +51,10 @@ impl Future for TcpClient {
         };
 
         self.state = new_state;
-	match result {
-	    // by polling again, we register new future
-	    Ok(Async::NotReady) => self.poll(),
-	    result => result
-	}
+        match result {
+            // by polling again, we register new future
+            Ok(Async::NotReady) => self.poll(),
+            result => result
+        }
     }
 }

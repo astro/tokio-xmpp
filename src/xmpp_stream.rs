@@ -4,7 +4,7 @@ use futures::*;
 use tokio_io::{AsyncRead, AsyncWrite};
 use tokio_io::codec::Framed;
 use xml;
-use sasl::common::Credentials;
+use sasl::common::{Credentials, ChannelBinding};
 use jid::Jid;
 
 use xmpp_codec::*;
@@ -55,7 +55,8 @@ impl<S: AsyncRead + AsyncWrite> XMPPStream<S> {
     pub fn auth(self, username: String, password: String) -> Result<ClientAuth<S>, String> {
         let creds = Credentials::default()
             .with_username(username)
-            .with_password(password);
+            .with_password(password)
+            .with_channel_binding(ChannelBinding::None);
         ClientAuth::new(self, creds)
     }
 }
