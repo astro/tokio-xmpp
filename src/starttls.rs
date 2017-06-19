@@ -37,7 +37,6 @@ impl<S: AsyncRead + AsyncWrite> StartTlsClient<S> {
             "starttls".to_owned(), Some(NS_XMPP_TLS.to_owned()),
             vec![]
         );
-        println!("send {}", nonza);
         let packet = Packet::Stanza(nonza);
         let send = xmpp_stream.send(packet);
 
@@ -60,7 +59,6 @@ impl<S: AsyncRead + AsyncWrite> Future for StartTlsClient<S> {
             StartTlsClientState::SendStartTls(mut send) =>
                 match send.poll() {
                     Ok(Async::Ready(xmpp_stream)) => {
-                        println!("starttls sent");
                         let new_state = StartTlsClientState::AwaitProceed(xmpp_stream);
                         retry = true;
                         (new_state, Ok(Async::NotReady))
@@ -75,7 +73,6 @@ impl<S: AsyncRead + AsyncWrite> Future for StartTlsClient<S> {
                     Ok(Async::Ready(Some(Packet::Stanza(ref stanza))))
                         if stanza.name == "proceed" =>
                     {
-                        println!("* proceed *");
                         let stream = xmpp_stream.stream.into_inner();
                         let connect = TlsConnector::builder().unwrap()
                             .build().unwrap()
@@ -96,7 +93,7 @@ impl<S: AsyncRead + AsyncWrite> Future for StartTlsClient<S> {
             StartTlsClientState::StartingTls(mut connect) =>
                 match connect.poll() {
                     Ok(Async::Ready(tls_stream)) => {
-                        println!("Got a TLS stream!");
+                        println!("TLS stream established");
                         let start = XMPPStream::from_stream(tls_stream, self.jid.clone());
                         let new_state = StartTlsClientState::Start(start);
                         retry = true;

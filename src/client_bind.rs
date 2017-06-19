@@ -31,10 +31,7 @@ impl<S: AsyncWrite> ClientBind<S> {
                 // return the (probably // usable) stream immediately
                 ClientBind::Unsupported(stream),
             Some(_) => {
-                println!("Bind is supported!");
-
                 let iq = make_bind_request(stream.jid.resource.as_ref());
-                println!("Send {}", iq);
                 let send = stream.send(Packet::Stanza(iq));
                 ClientBind::WaitSend(send)
             },

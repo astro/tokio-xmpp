@@ -20,7 +20,6 @@ impl XMPPRoot {
     fn new(root: xml::StartTag) -> Self {
         let mut builder = xml::ElementBuilder::new();
         let mut attributes = HashMap::new();
-        println!("root attributes: {:?}", root.attributes);
         for (name_ns, value) in root.attributes {
             match name_ns {
                 (ref name, None) if name == "xmlns" =>
@@ -73,10 +72,13 @@ impl Decoder for XMPPCodec {
     type Error = Error;
 
     fn decode(&mut self, buf: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
-        println!("XMPPCodec.decode {:?}", buf.len());
         match from_utf8(buf.take().as_ref()) {
-            Ok(s) =>
-                self.parser.feed_str(s),
+            Ok(s) => {
+                if s.len() > 0 {
+                    println!("<< {}", s);
+                    self.parser.feed_str(s);
+                }
+            },
             Err(e) =>
                 return Err(Error::new(ErrorKind::InvalidInput, e)),
         }
@@ -110,7 +112,7 @@ impl Decoder for XMPPCodec {
                     match root.handle_event(event) {
                         None => (),
                         Some(Ok(stanza)) => {
-                            println!("stanza: {}", stanza);
+                            // Emit the stanza
                             result = Some(Packet::Stanza(stanza));
                             break
                         },
@@ -151,13 +153,18 @@ impl Encoder for XMPPCodec {
                 }
                 write!(buf, ">\n").unwrap();
 
-                println!("Encode start to {}", buf);
+                print!(">> {}", buf);
                 write!(dst, "{}", buf)
             },
-            Packet::Stanza(stanza) =>
-                write!(dst, "{}", stanza),
-            Packet::Text(text) =>
-                write!(dst, "{}", xml::escape(&text)),
+            Packet::Stanza(stanza) => {
+                println!(">> {}", stanza);
+                write!(dst, "{}", stanza)
+            },
+            Packet::Text(text) => {
+                let escaped = xml::escape(&text);
+                println!(">> {}", escaped);
+                write!(dst, "{}", escaped)
+            },
             // TODO: Implement all
             _ => Ok(())
         }

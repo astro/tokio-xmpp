@@ -36,7 +36,6 @@ impl<S: AsyncWrite> ClientAuth<S> {
             Box::new(Anonymous::new()),
         ];
 
-        println!("stream_features: {}", stream.stream_features);
         let mech_names: Vec<String> =
             match stream.stream_features.get_child("mechanisms", Some(NS_XMPP_SASL)) {
                 None =>
@@ -46,12 +45,12 @@ impl<S: AsyncWrite> ClientAuth<S> {
                     .map(|mech_el| mech_el.content_str())
                     .collect(),
             };
-        println!("Offered mechanisms: {:?}", mech_names);
+        println!("SASL mechanisms offered: {:?}", mech_names);
 
         for mut mech in mechs {
             let name = mech.name().to_owned();
             if mech_names.iter().any(|name1| *name1 == name) {
-                println!("Selected mechanism: {:?}", name);
+                println!("SASL mechanism selected: {:?}", name);
                 let initial = try!(mech.initial());
                 let mut this = ClientAuth {
                     state: ClientAuthState::Invalid,
@@ -79,7 +78,6 @@ impl<S: AsyncWrite> ClientAuth<S> {
         );
         nonza.text(content.to_base64(base64::URL_SAFE));
 
-        println!("send {}", nonza);
         let send = stream.send(Packet::Stanza(nonza));
 
         self.state = ClientAuthState::WaitSend(send);
@@ -97,7 +95,6 @@ impl<S: AsyncRead + AsyncWrite> Future for ClientAuth<S> {
             ClientAuthState::WaitSend(mut send) =>
                 match send.poll() {
                     Ok(Async::Ready(stream)) => {
-                        println!("send done");
                         self.state = ClientAuthState::WaitRecv(stream);
                         self.poll()
                     },
