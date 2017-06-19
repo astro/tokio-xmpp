@@ -112,7 +112,7 @@ impl<S: AsyncRead + AsyncWrite> Future for ClientBind<S> {
                         replace(self, ClientBind::WaitRecv(stream));
                         self.poll()
                     },
-                    Ok(_) => {
+                    Ok(Async::NotReady) => {
                         replace(self, ClientBind::WaitRecv(stream));
                         Ok(Async::NotReady)
                     },
