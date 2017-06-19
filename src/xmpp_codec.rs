@@ -50,6 +50,7 @@ pub enum Packet {
     Error(Box<std::error::Error>),
     StreamStart(HashMap<String, String>),
     Stanza(xml::Element),
+    Text(String),
     StreamEnd,
 }
 
@@ -155,6 +156,8 @@ impl Encoder for XMPPCodec {
             },
             Packet::Stanza(stanza) =>
                 write!(dst, "{}", stanza),
+            Packet::Text(text) =>
+                write!(dst, "{}", xml::escape(&text)),
             // TODO: Implement all
             _ => Ok(())
         }
