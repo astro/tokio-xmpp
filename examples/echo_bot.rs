@@ -2,13 +2,14 @@ extern crate futures;
 extern crate tokio_core;
 extern crate tokio_xmpp;
 extern crate jid;
+extern crate xml;
 
 use std::str::FromStr;
 use tokio_core::reactor::Core;
-use futures::{Future, Stream};
+use futures::{Future, Stream, Sink};
+use jid::Jid;
 use tokio_xmpp::TcpClient;
 use tokio_xmpp::xmpp_codec::Packet;
-use jid::Jid;
 
 fn main() {
     let jid = Jid::from_str("astrobot@example.net").expect("JID");
@@ -38,6 +39,11 @@ fn main() {
         stream.bind()
     }).and_then(|stream| {
         println!("Bound to {}", stream.jid);
+
+        let presence = xml::Element::new("presence".to_owned(), None, vec![]);
+        stream.send(Packet::Stanza(presence))
+            .map_err(|e| format!("{}", e))
+    }).and_then(|stream| {
         stream.for_each(|event| {
             match event {
                 Packet::Stanza(el) => println!("<< {}", el),
