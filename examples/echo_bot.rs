@@ -35,6 +35,9 @@ fn main() {
         let username = jid.node.as_ref().unwrap().to_owned();
         stream.auth(username, password).expect("auth")
     }).and_then(|stream| {
+        stream.bind()
+    }).and_then(|stream| {
+        println!("Bound to {}", stream.jid);
         stream.for_each(|event| {
             match event {
                 Packet::Stanza(el) => println!("<< {}", el),

@@ -11,6 +11,7 @@ use xmpp_codec::*;
 use stream_start::*;
 use starttls::{NS_XMPP_TLS, StartTlsClient};
 use client_auth::ClientAuth;
+use client_bind::ClientBind;
 
 pub const NS_XMPP_STREAM: &str = "http://etherx.jabber.org/streams";
 
@@ -58,6 +59,10 @@ impl<S: AsyncRead + AsyncWrite> XMPPStream<S> {
             .with_password(password)
             .with_channel_binding(ChannelBinding::None);
         ClientAuth::new(self, creds)
+    }
+
+    pub fn bind(self) -> ClientBind<S> {
+        ClientBind::new(self)
     }
 }
 
