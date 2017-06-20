@@ -15,6 +15,7 @@ use stream_start::StreamStart;
 
 pub const NS_XMPP_TLS: &str = "urn:ietf:params:xml:ns:xmpp-tls";
 
+
 pub struct StartTlsClient<S: AsyncRead + AsyncWrite> {
     state: StartTlsClientState<S>,
     jid: Jid,
