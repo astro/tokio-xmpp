@@ -46,6 +46,7 @@ impl Client {
     }
 
     fn make_connect(jid: Jid, password: String, handle: &Handle) -> Box<Future<Item=XMPPStream, Error=String>> {
+        // TODO: implement proper DNS SRV lookup
         use std::net::ToSocketAddrs;
         let addr = "89.238.79.220:5222"
             .to_socket_addrs().unwrap()
