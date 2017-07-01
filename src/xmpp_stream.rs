@@ -1,4 +1,3 @@
-use std::default::Default;
 use std::collections::HashMap;
 use futures::*;
 use tokio_io::{AsyncRead, AsyncWrite};

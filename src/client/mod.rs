@@ -1,7 +1,7 @@
 use std::mem::replace;
 use std::str::FromStr;
 use std::error::Error;
-use tokio_core::reactor::{Core, Handle};
+use tokio_core::reactor::Handle;
 use tokio_core::net::TcpStream;
 use tokio_io::{AsyncRead, AsyncWrite};
 use tokio_tls::TlsStream;
@@ -22,7 +22,6 @@ use self::bind::*;
 
 pub struct Client {
     pub jid: Jid,
-    password: String,
     state: ClientState,
 }
 
@@ -33,8 +32,6 @@ enum ClientState {
     Disconnected,
     Connecting(Box<Future<Item=XMPPStream, Error=String>>),
     Connected(XMPPStream),
-    // Sending,
-    // Drain,
 }
 
 impl Client {
@@ -43,7 +40,7 @@ impl Client {
         let password = password.to_owned();
         let connect = Self::make_connect(jid.clone(), password.clone(), handle);
         Ok(Client {
-            jid, password,
+            jid,
             state: ClientState::Connecting(connect),
         })
     }
@@ -73,10 +70,7 @@ impl Client {
                 Self::bind(stream)
             }).and_then(|stream| {
                 println!("Bound to {}", stream.jid);
-
-                let presence = xml::Element::new("presence".to_owned(), None, vec![]);
-                stream.send(Packet::Stanza(presence))
-                    .map_err(|e| format!("{}", e))
+                Ok(stream)
             })
         )
     }
@@ -116,20 +110,18 @@ impl Stream for Client {
     type Error = String;
 
     fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
-        println!("stream.poll");
         let state = replace(&mut self.state, ClientState::Invalid);
 
         match state {
             ClientState::Invalid =>
                 Err("invalid client state".to_owned()),
             ClientState::Disconnected =>
-                Ok(Async::NotReady),
+                Ok(Async::Ready(None)),
             ClientState::Connecting(mut connect) => {
                 match connect.poll() {
                     Ok(Async::Ready(stream)) => {
-                        println!("connected");
                         self.state = ClientState::Connected(stream);
-                        self.poll()
+                        Ok(Async::Ready(Some(ClientEvent::Online)))
                     },
                     Ok(Async::NotReady) => {
                         self.state = ClientState::Connecting(connect);
@@ -162,6 +154,40 @@ impl Stream for Client {
                         Err(e.description().to_owned()),
                 }
             },
+        }
+    }
+}
+
+impl Sink for Client {
+    type SinkItem = xml::Element;
+    type SinkError = String;
+
+    fn start_send(&mut self, item: Self::SinkItem) -> StartSend<Self::SinkItem, Self::SinkError> {
+        match self.state {
+            ClientState::Connected(ref mut stream) =>
+                match stream.start_send(Packet::Stanza(item)) {
+                    Ok(AsyncSink::NotReady(Packet::Stanza(stanza))) =>
+                        Ok(AsyncSink::NotReady(stanza)),
+                    Ok(AsyncSink::NotReady(_)) =>
+                        panic!("Client.start_send with stanza but got something else back"),
+                    Ok(AsyncSink::Ready) => {
+                        Ok(AsyncSink::Ready)
+                    },
+                    Err(e) =>
+                        Err(e.description().to_owned()),
+                },
+            _ =>
+                Ok(AsyncSink::NotReady(item)),
+        }
+    }
+
+    fn poll_complete(&mut self) -> Poll<(), Self::SinkError> {
+        match &mut self.state {
+            &mut ClientState::Connected(ref mut stream) =>
+                stream.poll_complete()
+                .map_err(|e| e.description().to_owned()),
+            _ =>
+                Ok(Async::Ready(())),
         }
     }
 }
