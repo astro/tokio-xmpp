@@ -6,7 +6,7 @@ extern crate xml;
 
 use tokio_core::reactor::Core;
 use futures::{Future, Stream, Sink, future};
-use tokio_xmpp::{Client, ClientEvent};
+use tokio_xmpp::Client;
 
 fn main() {
     let mut core = Core::new().unwrap();
@@ -24,8 +24,8 @@ fn main() {
         );
     };
     let done = stream.for_each(|event| {
-        let result: Box<Future<Item=(), Error=String>> = match event {
-            ClientEvent::Online => {
+        let result: Box<Future<Item=(), Error=String>> =
+            if event.is_online() {
                 println!("Online!");
 
                 let presence = make_presence();
@@ -33,28 +33,25 @@ fn main() {
                 Box::new(
                     future::ok(())
                 )
-            },
-            ClientEvent::Stanza(ref stanza)
-                if stanza.name == "message"
-                && stanza.get_attribute("type", None) != Some("error") =>
-            {
-                let from = stanza.get_attribute("from", None);
-                let body = stanza.get_child("body", Some("jabber:client"))
-                    .map(|el| el.content_str());
+            } else if let Some(stanza) = event.as_stanza() {
+                if stanza.name == "message" &&
+                    stanza.get_attribute("type", None) != Some("error") {
+                        let from = stanza.get_attribute("from", None);
+                        let body = stanza.get_child("body", Some("jabber:client"))
+                            .map(|el| el.content_str());
 
-                match (from.as_ref(), body) {
-                    (Some(from), Some(body)) => {
-                        let reply = make_reply(from, body);
-                        send(reply);
-                    },
-                    _ => (),
-                };
+                        match (from.as_ref(), body) {
+                            (Some(from), Some(body)) => {
+                                let reply = make_reply(from, body);
+                                send(reply);
+                            },
+                            _ => (),
+                        };
+                    }
                 Box::new(future::ok(()))
-            },
-            _ => {
+            } else {
                 Box::new(future::ok(()))
-            },
-        };
+            };
         result
     });
     

@@ -19,6 +19,8 @@ mod auth;
 use self::auth::*;
 mod bind;
 use self::bind::*;
+mod event;
+pub use self::event::Event as ClientEvent;
 
 pub struct Client {
     pub jid: Jid,
@@ -97,13 +99,6 @@ impl Client {
     fn bind<S: AsyncWrite>(stream: xmpp_stream::XMPPStream<S>) -> ClientBind<S> {
         ClientBind::new(stream)
     }
-}
-
-#[derive(Debug)]
-pub enum ClientEvent {
-    Online,
-    Disconnected,
-    Stanza(xml::Element),
 }
 
 impl Stream for Client {
