@@ -20,7 +20,3 @@ mod starttls;
 pub use starttls::*;
 mod client;
 pub use client::{Client, ClientEvent};
-
-
-// type FullClient = sasl::Client<StartTLS<TCPConnection>>
-
