@@ -14,19 +14,22 @@ fn main() {
 
     let (sink, stream) = client.split();
     let mut sink = Some(sink);
-    let done = stream.for_each(move |event| {
+    let mut send = move |stanza| {
+        sink = Some(
+            sink.take().
+                expect("sink")
+                .send(stanza)
+                .wait()
+                .expect("sink.send")
+        );
+    };
+    let done = stream.for_each(|event| {
         let result: Box<Future<Item=(), Error=String>> = match event {
             ClientEvent::Online => {
                 println!("Online!");
 
                 let presence = make_presence();
-                sink = Some(
-                    sink.take().
-                        expect("sink")
-                        .send(presence)
-                        .wait()
-                        .expect("sink.send")
-                );
+                send(presence);
                 Box::new(
                     future::ok(())
                 )
@@ -42,13 +45,7 @@ fn main() {
                 match (from.as_ref(), body) {
                     (Some(from), Some(body)) => {
                         let reply = make_reply(from, body);
-                        sink = Some(
-                            sink.take().
-                                expect("sink")
-                                .send(reply)
-                                .wait()
-                                .expect("sink.send")
-                        );
+                        send(reply);
                     },
                     _ => (),
                 };
