@@ -14,6 +14,7 @@ use super::xmpp_codec::Packet;
 use super::xmpp_stream;
 use super::tcp::TcpClient;
 use super::starttls::{NS_XMPP_TLS, StartTlsClient};
+use super::happy_eyeballs::Connecter;
 
 mod auth;
 use self::auth::*;
@@ -37,7 +38,7 @@ enum ClientState {
 }
 
 impl Client {
-    pub fn new(jid: &str, password: &str, handle: &Handle) -> Result<Self, JidParseError> {
+    pub fn new(jid: &str, password: &str, handle: Handle) -> Result<Self, JidParseError> {
         let jid = try!(Jid::from_str(jid));
         let password = password.to_owned();
         let connect = Self::make_connect(jid.clone(), password.clone(), handle);
@@ -47,34 +48,29 @@ impl Client {
         })
     }
 
-    fn make_connect(jid: Jid, password: String, handle: &Handle) -> Box<Future<Item=XMPPStream, Error=String>> {
-        // TODO: implement proper DNS SRV lookup
-        use std::net::ToSocketAddrs;
-        let addr = "89.238.79.220:5222"
-            .to_socket_addrs().unwrap()
-            .next().unwrap();
+    fn make_connect(jid: Jid, password: String, handle: Handle) -> Box<Future<Item=XMPPStream, Error=String>> {
         let username = jid.node.as_ref().unwrap().to_owned();
         let password = password;
         Box::new(
-            TcpClient::connect(
-                jid,
-                &addr,
-                handle
-            ).map_err(|e| format!("{}", e)
-            ).and_then(|stream| {
-                if Self::can_starttls(&stream) {
-                    Self::starttls(stream)
-                } else {
-                    panic!("No STARTTLS")
-                }
-            }).and_then(move |stream| {
-                Self::auth(stream, username, password).expect("auth")
-            }).and_then(|stream| {
-                Self::bind(stream)
-            }).and_then(|stream| {
-                println!("Bound to {}", stream.jid);
-                Ok(stream)
-            })
+            Connecter::from_lookup(handle, &jid.domain, "_xmpp-client._tcp", 5222)
+                .expect("Connector::from_lookup")
+                .and_then(|tcp_stream|
+                          TcpClient::from_stream(jid, tcp_stream)
+                          .map_err(|e| format!("{}", e))
+                ).and_then(|stream| {
+                    if Self::can_starttls(&stream) {
+                        Self::starttls(stream)
+                    } else {
+                        panic!("No STARTTLS")
+                    }
+                }).and_then(move |stream| {
+                    Self::auth(stream, username, password).expect("auth")
+                }).and_then(|stream| {
+                    Self::bind(stream)
+                }).and_then(|stream| {
+                    println!("Bound to {}", stream.jid);
+                    Ok(stream)
+                })
         )
     }
 

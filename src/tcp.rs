@@ -27,6 +27,14 @@ impl TcpClient {
             jid,
         }
     }
+
+    pub fn from_stream(jid: Jid, tcp_stream: TcpStream) -> Self {
+        let start = XMPPStream::from_stream(tcp_stream, jid.clone());
+        TcpClient {
+            state: TcpClientState::Start(start),
+            jid,
+        }
+    }
 }
 
 impl Future for TcpClient {

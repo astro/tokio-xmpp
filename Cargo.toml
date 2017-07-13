@@ -5,7 +5,7 @@ authors = ["Astro <astro@spaceboyz.net>"]
 
 [dependencies]
 futures = "*"
-tokio-core = "*"
+tokio-core = "0.1.7"
 tokio-io = "*"
 bytes = "*"
 RustyXML = "*"
@@ -14,3 +14,4 @@ tokio-tls = "*"
 sasl = "*"
 rustc-serialize = "*"
 jid = "*"
+domain = "0.2.1"

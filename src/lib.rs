@@ -9,7 +9,7 @@ extern crate tokio_tls;
 extern crate sasl;
 extern crate rustc_serialize as serialize;
 extern crate jid;
-
+extern crate domain;
 
 pub mod xmpp_codec;
 pub mod xmpp_stream;
@@ -18,5 +18,6 @@ mod tcp;
 pub use tcp::*;
 mod starttls;
 pub use starttls::*;
+mod happy_eyeballs;
 mod client;
 pub use client::{Client, ClientEvent};
