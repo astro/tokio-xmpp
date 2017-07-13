@@ -9,10 +9,16 @@ use futures::{Future, Stream, Sink, future};
 use tokio_xmpp::Client;
 
 fn main() {
+    // Tokio_core context
     let mut core = Core::new().unwrap();
+    // Client instance
     let client = Client::new("astrobot@example.org", "", &core.handle()).unwrap();
 
+    // Make the two interfaces for sending and receiving independent
+    // of each other so we can move one into a closure.
     let (sink, stream) = client.split();
+    // Wrap sink in Option so that we can take() it for the send(self)
+    // to consume and return it back when ready.
     let mut sink = Some(sink);
     let mut send = move |stanza| {
         sink = Some(
@@ -23,38 +29,35 @@ fn main() {
                 .expect("sink.send")
         );
     };
+    // Main loop, processes events
     let done = stream.for_each(|event| {
-        let result: Box<Future<Item=(), Error=String>> =
-            if event.is_online() {
-                println!("Online!");
+        if event.is_online() {
+            println!("Online!");
 
-                let presence = make_presence();
-                send(presence);
-                Box::new(
-                    future::ok(())
-                )
-            } else if let Some(stanza) = event.as_stanza() {
-                if stanza.name == "message" &&
-                    stanza.get_attribute("type", None) != Some("error") {
-                        let from = stanza.get_attribute("from", None);
-                        let body = stanza.get_child("body", Some("jabber:client"))
-                            .map(|el| el.content_str());
+            let presence = make_presence();
+            send(presence);
+        } else if let Some(stanza) = event.as_stanza() {
+            if stanza.name == "message" &&
+                stanza.get_attribute("type", None) != Some("error") {
+                    // This is a message we'll echo
+                    let from = stanza.get_attribute("from", None);
+                    let body = stanza.get_child("body", Some("jabber:client"))
+                        .map(|el| el.content_str());
 
-                        match (from.as_ref(), body) {
-                            (Some(from), Some(body)) => {
-                                let reply = make_reply(from, body);
-                                send(reply);
-                            },
-                            _ => (),
-                        };
-                    }
-                Box::new(future::ok(()))
-            } else {
-                Box::new(future::ok(()))
-            };
-        result
+                    match (from.as_ref(), body) {
+                        (Some(from), Some(body)) => {
+                            let reply = make_reply(from, body);
+                            send(reply);
+                        },
+                        _ => (),
+                    };
+                }
+        }
+
+        Box::new(future::ok(()))
     });
-    
+
+    // Start polling `done`
     match core.run(done) {
         Ok(_) => (),
         Err(e) => {
@@ -64,6 +67,7 @@ fn main() {
     }
 }
 
+// Construct a <presence/>
 fn make_presence() -> xml::Element {
     let mut presence = xml::Element::new("presence".to_owned(), None, vec![]);
     presence.tag(xml::Element::new("status".to_owned(), None, vec![]))
@@ -73,6 +77,7 @@ fn make_presence() -> xml::Element {
     presence
 }
 
+// Construct a chat <message/>
 fn make_reply(to: &str, body: String) -> xml::Element {
     let mut message = xml::Element::new(
         "message".to_owned(),
