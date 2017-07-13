@@ -1,4 +1,6 @@
 use std::str::FromStr;
+use std::collections::HashMap;
+use std::net::SocketAddr;
 use futures::*;
 use tokio_core::reactor::Handle;
 use tokio_core::net::{TcpStream, TcpStreamNew};
@@ -11,7 +13,7 @@ pub struct Connecter {
     resolver: Resolver,
     lookup: Option<LookupSrv>,
     srvs: Option<LookupSrvStream>,
-    connects: Vec<TcpStreamNew>,
+    connects: HashMap<SocketAddr, TcpStreamNew>,
 }
 
 impl Connecter {
@@ -33,7 +35,7 @@ impl Connecter {
             resolver,
             lookup: Some(lookup),
             srvs: None,
-            connects: vec![],
+            connects: HashMap::new(),
         })
     }
 }
@@ -65,27 +67,37 @@ impl Future for Connecter {
             Some(Ok(Async::Ready(None))) =>
                 self.srvs = None,
             Some(Ok(Async::Ready(Some(srv_item)))) => {
+                let handle = &self.handle;
                 for addr in srv_item.to_socket_addrs() {
-                    println!("Connect to {}", addr);
-                    let connect = TcpStream::connect(&addr, &self.handle);
-                    self.connects.push(connect);
+                    self.connects.entry(addr)
+                        .or_insert_with(|| {
+                            println!("Connect to {}", addr);
+                            TcpStream::connect(&addr, handle)
+                        });
                 }
             },
             Some(Err(e)) =>
                 return Err(format!("{}", e)),
         }
 
-        for mut connect in &mut self.connects {
+        for mut connect in self.connects.values_mut() {
             match connect.poll() {
                 Ok(Async::NotReady) => (),
                 Ok(Async::Ready(tcp_stream)) =>
                     // Success!
                     return Ok(Async::Ready(tcp_stream)),
                 Err(e) =>
-                    return Err(format!("{}", e)),
+                    println!("{}", e),
             }
         }
-        
+
+        if  self.lookup.is_none() &&
+            self.srvs.is_none() &&
+            self.connects.is_empty()
+        {
+            return Err("All connection attempts failed".to_owned());
+        }
+
         Ok(Async::NotReady)
     }
 }
