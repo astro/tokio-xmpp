@@ -4,15 +4,25 @@ extern crate tokio_xmpp;
 extern crate jid;
 extern crate xml;
 
+use std::env::args;
+use std::process::exit;
 use tokio_core::reactor::Core;
 use futures::{Future, Stream, Sink, future};
 use tokio_xmpp::Client;
 
 fn main() {
-    // Tokio_core context
+    let args: Vec<String> = args().collect();
+    if args.len() != 3 {
+        println!("Usage: {} <jid> <password>", args[0]);
+        exit(1);
+    }
+    let jid = &args[1];
+    let password = &args[2];
+
+    // tokio_core context
     let mut core = Core::new().unwrap();
     // Client instance
-    let client = Client::new("astrobot@example.org", "", &core.handle()).unwrap();
+    let client = Client::new(jid, password, core.handle()).unwrap();
 
     // Make the two interfaces for sending and receiving independent
     // of each other so we can move one into a closure.
