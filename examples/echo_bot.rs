@@ -2,13 +2,14 @@ extern crate futures;
 extern crate tokio_core;
 extern crate tokio_xmpp;
 extern crate jid;
-extern crate xml;
+extern crate minidom;
 
 use std::env::args;
 use std::process::exit;
 use tokio_core::reactor::Core;
 use futures::{Future, Stream, Sink, future};
 use tokio_xmpp::Client;
+use minidom::Element;
 
 fn main() {
     let args: Vec<String> = args().collect();
@@ -47,14 +48,14 @@ fn main() {
             let presence = make_presence();
             send(presence);
         } else if let Some(stanza) = event.as_stanza() {
-            if stanza.name == "message" &&
-                stanza.get_attribute("type", None) != Some("error") {
+            if stanza.name() == "message" &&
+                stanza.attr("type") != Some("error") {
                     // This is a message we'll echo
-                    let from = stanza.get_attribute("from", None);
-                    let body = stanza.get_child("body", Some("jabber:client"))
-                        .map(|el| el.content_str());
+                    let from = stanza.attr("from");
+                    let body = stanza.get_child("body", "jabber:client")
+                        .map(|el| el.text());
 
-                    match (from.as_ref(), body) {
+                    match (from, body) {
                         (Some(from), Some(body)) => {
                             let reply = make_reply(from, body);
                             send(reply);
@@ -78,24 +79,24 @@ fn main() {
 }
 
 // Construct a <presence/>
-fn make_presence() -> xml::Element {
-    let mut presence = xml::Element::new("presence".to_owned(), None, vec![]);
-    presence.tag(xml::Element::new("status".to_owned(), None, vec![]))
-        .text("chat".to_owned());
-    presence.tag(xml::Element::new("show".to_owned(), None, vec![]))
-        .text("Echoing messages".to_owned());
-    presence
+fn make_presence() -> Element {
+    Element::builder("presence")
+        .append(Element::builder("status")
+                .append("chat")
+                .build())
+        .append(Element::builder("show")
+                .append("Echoing messages")
+                .build())
+        .build()
 }
 
 // Construct a chat <message/>
-fn make_reply(to: &str, body: String) -> xml::Element {
-    let mut message = xml::Element::new(
-        "message".to_owned(),
-        None,
-        vec![("type".to_owned(), None, "chat".to_owned()),
-             ("to".to_owned(), None, to.to_owned())]
-    );
-    message.tag(xml::Element::new("body".to_owned(), None, vec![]))
-        .text(body);
-    message
+fn make_reply(to: &str, body: String) -> Element {
+    Element::builder("message")
+        .attr("type", "chat")
+        .attr("to", to)
+        .append(Element::builder("body")
+                .append(body)
+                .build())
+        .build()
 }

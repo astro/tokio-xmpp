@@ -7,8 +7,10 @@ authors = ["Astro <astro@spaceboyz.net>"]
 futures = "*"
 tokio-core = "0.1.7"
 tokio-io = "*"
-bytes = "*"
-RustyXML = "*"
+bytes = "0.4.4"
+xml5ever = "*"
+tendril = "*"
+minidom = { path = "../../programs/minidom-rs" }
 native-tls = "*"
 tokio-tls = "*"
 sasl = "*"

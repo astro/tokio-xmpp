@@ -1,69 +1,139 @@
 use std;
+use std::default::Default;
+use std::iter::FromIterator;
+use std::cell::RefCell;
+use std::rc::Rc;
 use std::fmt::Write;
 use std::str::from_utf8;
 use std::io::{Error, ErrorKind};
 use std::collections::HashMap;
+use std::collections::vec_deque::VecDeque;
 use tokio_io::codec::{Encoder, Decoder};
-use xml;
+use minidom::Element;
+use xml5ever::tokenizer::{XmlTokenizer, TokenSink, Token, Tag, TagKind};
 use bytes::*;
 
-const NS_XMLNS: &'static str = "http://www.w3.org/2000/xmlns/";
-
-pub type Attributes = HashMap<(String, Option<String>), String>;
-
-struct XMPPRoot {
-    builder: xml::ElementBuilder,
-    pub attributes: Attributes,
-}
-
-impl XMPPRoot {
-    fn new(root: xml::StartTag) -> Self {
-        let mut builder = xml::ElementBuilder::new();
-        let mut attributes = HashMap::new();
-        for (name_ns, value) in root.attributes {
-            match name_ns {
-                (ref name, None) if name == "xmlns" =>
-                    builder.set_default_ns(value),
-                (ref prefix, Some(ref ns)) if ns == NS_XMLNS =>
-                    builder.define_prefix(prefix.to_owned(), value),
-                _ => {
-                    attributes.insert(name_ns, value);
-                },
-            }
-        }
-
-        XMPPRoot {
-            builder: builder,
-            attributes: attributes,
-        }
-    }
-
-    fn handle_event(&mut self, event: Result<xml::Event, xml::ParserError>)
-                    -> Option<Result<xml::Element, xml::BuilderError>> {
-        self.builder.handle_event(event)
-    }
-}
+// const NS_XMLNS: &'static str = "http://www.w3.org/2000/xmlns/";
 
 #[derive(Debug)]
 pub enum Packet {
     Error(Box<std::error::Error>),
     StreamStart(HashMap<String, String>),
-    Stanza(xml::Element),
+    Stanza(Element),
     Text(String),
     StreamEnd,
 }
 
+struct ParserSink {
+    // Ready stanzas
+    queue: Rc<RefCell<VecDeque<Packet>>>,
+    // Parsing stack
+    stack: Vec<Element>,
+}
+
+impl ParserSink {
+    pub fn new(queue: Rc<RefCell<VecDeque<Packet>>>) -> Self {
+        ParserSink {
+            queue,
+            stack: vec![],
+        }
+    }
+
+    fn push_queue(&self, pkt: Packet) {
+        println!("push: {:?}", pkt);
+        self.queue.borrow_mut().push_back(pkt);
+    }
+
+    fn handle_start_tag(&mut self, tag: Tag) {
+        let el = tag_to_element(&tag);
+        self.stack.push(el);
+    }
+
+    fn handle_end_tag(&mut self) {
+        let el = self.stack.pop().unwrap();
+        match self.stack.len() {
+            // </stream:stream>
+            0 =>
+                self.push_queue(Packet::StreamEnd),
+            // </stanza>
+            1 =>
+                self.push_queue(Packet::Stanza(el)),
+            len => {
+                let parent = &mut self.stack[len - 1];
+                parent.append_child(el);
+            },
+        }
+    }
+}
+
+fn tag_to_element(tag: &Tag) -> Element {
+    let el_builder = Element::builder(tag.name.local.as_ref())
+        .ns(tag.name.ns.as_ref());
+    let el_builder = tag.attrs.iter().fold(
+        el_builder,
+        |el_builder, attr| el_builder.attr(
+            attr.name.local.as_ref(),
+            attr.value.as_ref()
+        )
+    );
+    el_builder.build()
+}
+
+impl TokenSink for ParserSink {
+    fn process_token(&mut self, token: Token) {
+        println!("Token: {:?}", token);
+        match token {
+            Token::TagToken(tag) => match tag.kind {
+                TagKind::StartTag =>
+                    self.handle_start_tag(tag),
+                TagKind::EndTag =>
+                    self.handle_end_tag(),
+                TagKind::EmptyTag => {
+                    self.handle_start_tag(tag);
+                    self.handle_end_tag();
+                },
+                TagKind::ShortTag =>
+                    self.push_queue(Packet::Error(Box::new(Error::new(ErrorKind::InvalidInput, "ShortTag")))),
+            },
+            Token::CharacterTokens(tendril) =>
+                match self.stack.len() {
+                    0 | 1 =>
+                        self.push_queue(Packet::Text(tendril.into())),
+                    len => {
+                        let el = &mut self.stack[len - 1];
+                        el.append_text_node(tendril);
+                    },
+                },
+            Token::EOFToken =>
+                self.push_queue(Packet::StreamEnd),
+            Token::ParseError(s) => {
+                println!("ParseError: {:?}", s);
+                self.push_queue(Packet::Error(Box::new(Error::new(ErrorKind::InvalidInput, (*s).to_owned()))))
+            },
+            _ => (),
+        }
+    }
+
+    // fn end(&mut self) {
+    // }
+}
+
 pub struct XMPPCodec {
-    parser: xml::Parser,
-    root: Option<XMPPRoot>,
+    parser: XmlTokenizer<ParserSink>,
+    // For handling truncated utf8
     buf: Vec<u8>,
+    queue: Rc<RefCell<VecDeque<Packet>>>,
 }
 
 impl XMPPCodec {
     pub fn new() -> Self {
+        let queue = Rc::new(RefCell::new((VecDeque::new())));
+        let sink = ParserSink::new(queue.clone());
+        // TODO: configure parser?
+        let parser = XmlTokenizer::new(sink, Default::default());
         XMPPCodec {
-            parser: xml::Parser::new(),
-            root: None,
+            parser,
+            queue,
             buf: vec![],
         }
     }
@@ -74,6 +144,7 @@ impl Decoder for XMPPCodec {
     type Error = Error;
 
     fn decode(&mut self, buf: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+        println!("decode {} bytes", buf.len());
         let buf1: Box<AsRef<[u8]>> =
             if self.buf.len() > 0 && buf.len() > 0 {
                 let mut prefix = std::mem::replace(&mut self.buf, vec![]);
@@ -87,7 +158,8 @@ impl Decoder for XMPPCodec {
             Ok(s) => {
                 if s.len() > 0 {
                     println!("<< {}", s);
-                    self.parser.feed_str(s);
+                    let tendril = FromIterator::from_iter(s.chars());
+                    self.parser.feed(tendril);
                 }
             },
             // Remedies for truncated utf8
@@ -110,57 +182,11 @@ impl Decoder for XMPPCodec {
             },
         }
 
-        let mut new_root: Option<XMPPRoot> = None;
-        let mut result = None;
-        for event in &mut self.parser {
-            match self.root {
-                None => {
-                    // Expecting <stream:stream>
-                    match event {
-                        Ok(xml::Event::ElementStart(start_tag)) => {
-                            let mut attrs: HashMap<String, String> = HashMap::new();
-                            for (&(ref name, _), value) in &start_tag.attributes {
-                                attrs.insert(name.to_owned(), value.to_owned());
-                            }
-                            result = Some(Packet::StreamStart(attrs));
-                            self.root = Some(XMPPRoot::new(start_tag));
-                            break
-                        },
-                        Err(e) => {
-                            result = Some(Packet::Error(Box::new(e)));
-                            break
-                        },
-                        _ =>
-                            (),
-                    }
-                }
-
-                Some(ref mut root) => {
-                    match root.handle_event(event) {
-                        None => (),
-                        Some(Ok(stanza)) => {
-                            // Emit the stanza
-                            result = Some(Packet::Stanza(stanza));
-                            break
-                        },
-                        Some(Err(e)) => {
-                            result = Some(Packet::Error(Box::new(e)));
-                            break
-                        }
-                    };
-                },
-            }
-
-            match new_root.take() {
-                None => (),
-                Some(root) => self.root = Some(root),
-            }
-        }
-
+        let result = self.queue.borrow_mut().pop_front();
         Ok(result)
     }
 
-    fn decode_eof(&mut self, buf: &mut BytesMut) -> Result<Option<Self::Item>, Error> {
+    fn decode_eof(&mut self, buf: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
         self.decode(buf)
     }
 }
@@ -170,33 +196,54 @@ impl Encoder for XMPPCodec {
     type Error = Error;
 
     fn encode(&mut self, item: Self::Item, dst: &mut BytesMut) -> Result<(), Self::Error> {
+        println!("encode {:?}", item);
         match item {
             Packet::StreamStart(start_attrs) => {
                 let mut buf = String::new();
                 write!(buf, "<stream:stream").unwrap();
                 for (ref name, ref value) in &start_attrs {
-                    write!(buf, " {}=\"{}\"", xml::escape(&name), xml::escape(&value))
+                    write!(buf, " {}=\"{}\"", escape(&name), escape(&value))
                         .unwrap();
                 }
                 write!(buf, ">\n").unwrap();
 
                 print!(">> {}", buf);
                 write!(dst, "{}", buf)
+                    .map_err(|_| Error::from(ErrorKind::InvalidInput))
             },
             Packet::Stanza(stanza) => {
-                println!(">> {}", stanza);
-                write!(dst, "{}", stanza)
+                println!(">> {:?}", stanza);
+                let mut root_ns = None;  // TODO
+                stanza.write_to_inner(&mut dst.clone().writer(), &mut root_ns)
+                    .map_err(|_| Error::from(ErrorKind::InvalidInput))
             },
             Packet::Text(text) => {
-                let escaped = xml::escape(&text);
+                let escaped = escape(&text);
                 println!(">> {}", escaped);
                 write!(dst, "{}", escaped)
+                    .map_err(|_| Error::from(ErrorKind::InvalidInput))
             },
             // TODO: Implement all
             _ => Ok(())
         }
-        .map_err(|_| Error::from(ErrorKind::InvalidInput))
     }
+}
+
+/// Copied from RustyXML for now
+pub fn escape(input: &str) -> String {
+    let mut result = String::with_capacity(input.len());
+
+    for c in input.chars() {
+        match c {
+            '&' => result.push_str("&amp;"),
+            '<' => result.push_str("&lt;"),
+            '>' => result.push_str("&gt;"),
+            '\'' => result.push_str("&apos;"),
+            '"' => result.push_str("&quot;"),
+            o => result.push(o)
+        }
+    }
+    result
 }
 
 #[cfg(test)]
@@ -240,8 +287,8 @@ mod tests {
         let r = c.decode(&mut b);
         assert!(match r {
             Ok(Some(Packet::Stanza(ref el)))
-                if el.name == "test"
-                && el.content_str() == "ß"
+                if el.name() == "test"
+                && el.text() == "ß"
                 => true,
             _ => false,
         });
@@ -271,8 +318,8 @@ mod tests {
         let r = c.decode(&mut b);
         assert!(match r {
             Ok(Some(Packet::Stanza(ref el)))
-                if el.name == "test"
-                && el.content_str() == "ß"
+                if el.name() == "test"
+                && el.text() == "ß"
                 => true,
             _ => false,
         });

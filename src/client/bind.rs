@@ -4,8 +4,8 @@ use std::str::FromStr;
 use futures::*;
 use futures::sink;
 use tokio_io::{AsyncRead, AsyncWrite};
-use xml;
 use jid::Jid;
+use minidom::Element;
 
 use xmpp_codec::*;
 use xmpp_stream::*;
@@ -25,7 +25,7 @@ impl<S: AsyncWrite> ClientBind<S> {
     /// the stream for anything else until the resource binding
     /// req/resp are done.
     pub fn new(stream: XMPPStream<S>) -> Self {
-        match stream.stream_features.get_child("bind", Some(NS_XMPP_BIND)) {
+        match stream.stream_features.get_child("bind", NS_XMPP_BIND) {
             None =>
                 // No resource binding available,
                 // return the (probably // usable) stream immediately
@@ -39,31 +39,22 @@ impl<S: AsyncWrite> ClientBind<S> {
     }
 }
 
-fn make_bind_request(resource: Option<&String>) -> xml::Element {
-    let mut iq = xml::Element::new(
-        "iq".to_owned(),
-        None,
-        vec![("type".to_owned(), None, "set".to_owned()),
-             ("id".to_owned(), None, BIND_REQ_ID.to_owned())]
-    );
-    {
-        let bind_el = iq.tag(
-            xml::Element::new(
-                "bind".to_owned(),
-                Some(NS_XMPP_BIND.to_owned()),
-                vec![]
-            ));
-        resource.map(|resource| {
-            let resource_el = bind_el.tag(
-                xml::Element::new(
-                    "resource".to_owned(),
-                    Some(NS_XMPP_BIND.to_owned()),
-                    vec![]
-                ));
-            resource_el.text(resource.clone());
-        });
+fn make_bind_request(resource: Option<&String>) -> Element {
+    let iq = Element::builder("iq")
+        .attr("type", "set")
+        .attr("id", BIND_REQ_ID);
+    let mut bind_el = Element::builder("bind")
+        .ns(NS_XMPP_BIND);
+    match resource {
+        Some(resource) => {
+            let resource_el = Element::builder("resource")
+                .append(resource);
+            bind_el = bind_el.append(resource_el.build());
+        },
+        None => (),
     }
-    iq
+    iq.append(bind_el.build())
+        .build()
 }
 
 impl<S: AsyncRead + AsyncWrite> Future for ClientBind<S> {
@@ -93,9 +84,9 @@ impl<S: AsyncRead + AsyncWrite> Future for ClientBind<S> {
             ClientBind::WaitRecv(mut stream) => {
                 match stream.poll() {
                     Ok(Async::Ready(Some(Packet::Stanza(ref iq))))
-                        if iq.name == "iq"
-                        && iq.get_attribute("id", None) == Some(BIND_REQ_ID) => {
-                            match iq.get_attribute("type", None) {
+                        if iq.name() == "iq"
+                        && iq.attr("id") == Some(BIND_REQ_ID) => {
+                            match iq.attr("type") {
                                 Some("result") => {
                                     get_bind_response_jid(&iq)
                                         .map(|jid| stream.jid = jid);
@@ -123,13 +114,13 @@ impl<S: AsyncRead + AsyncWrite> Future for ClientBind<S> {
     }
 }
 
-fn get_bind_response_jid(iq: &xml::Element) -> Option<Jid> {
-    iq.get_child("bind", Some(NS_XMPP_BIND))
+fn get_bind_response_jid(iq: &Element) -> Option<Jid> {
+    iq.get_child("bind", NS_XMPP_BIND)
         .and_then(|bind_el|
-                  bind_el.get_child("jid", Some(NS_XMPP_BIND))
+                  bind_el.get_child("jid", NS_XMPP_BIND)
         )
         .and_then(|jid_el|
-                  Jid::from_str(&jid_el.content_str())
+                  Jid::from_str(&jid_el.text())
                   .ok()
         )
 }

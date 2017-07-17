@@ -2,7 +2,7 @@ use std::mem::replace;
 use futures::*;
 use futures::sink;
 use tokio_io::{AsyncRead, AsyncWrite};
-use xml;
+use minidom::Element;
 use sasl::common::Credentials;
 use sasl::common::scram::*;
 use sasl::client::Mechanism;
@@ -37,12 +37,13 @@ impl<S: AsyncWrite> ClientAuth<S> {
         ];
 
         let mech_names: Vec<String> =
-            match stream.stream_features.get_child("mechanisms", Some(NS_XMPP_SASL)) {
+            match stream.stream_features.get_child("mechanisms", NS_XMPP_SASL) {
                 None =>
                     return Err("No auth mechanisms".to_owned()),
                 Some(mechs) =>
-                    mechs.get_children("mechanism", Some(NS_XMPP_SASL))
-                    .map(|mech_el| mech_el.content_str())
+                    mechs.children()
+                    .filter(|child| child.is("mechanism", NS_XMPP_SASL))
+                    .map(|mech_el| mech_el.text())
                     .collect(),
             };
         println!("SASL mechanisms offered: {:?}", mech_names);
@@ -58,7 +59,7 @@ impl<S: AsyncWrite> ClientAuth<S> {
                 };
                 this.send(
                     stream,
-                    "auth", &[("mechanism".to_owned(), name)],
+                    "auth", &[("mechanism", &name)],
                     &initial
                 );
                 return Ok(this);
@@ -68,15 +69,13 @@ impl<S: AsyncWrite> ClientAuth<S> {
         Err("No supported SASL mechanism available".to_owned())
     }
 
-    fn send(&mut self, stream: XMPPStream<S>, nonza_name: &str, attrs: &[(String, String)], content: &[u8]) {
-        let mut nonza = xml::Element::new(
-            nonza_name.to_owned(),
-            Some(NS_XMPP_SASL.to_owned()),
-            attrs.iter()
-                .map(|&(ref name, ref value)| (name.clone(), None, value.clone()))
-                .collect()
-        );
-        nonza.text(content.to_base64(base64::URL_SAFE));
+    fn send(&mut self, stream: XMPPStream<S>, nonza_name: &str, attrs: &[(&str, &str)], content: &[u8]) {
+        let nonza = Element::builder(nonza_name)
+            .ns(NS_XMPP_SASL);
+        let nonza = attrs.iter()
+            .fold(nonza, |nonza, &(name, value)| nonza.attr(name, value))
+            .append(content.to_base64(base64::URL_SAFE))
+            .build();
 
         let send = stream.send(Packet::Stanza(nonza));
 
@@ -108,11 +107,11 @@ impl<S: AsyncRead + AsyncWrite> Future for ClientAuth<S> {
             ClientAuthState::WaitRecv(mut stream) =>
                 match stream.poll() {
                     Ok(Async::Ready(Some(Packet::Stanza(ref stanza))))
-                        if stanza.name == "challenge"
-                        && stanza.ns == Some(NS_XMPP_SASL.to_owned()) =>
+                        if stanza.name() == "challenge"
+                        && stanza.ns() == Some(NS_XMPP_SASL) =>
                     {
                         let content = try!(
-                            stanza.content_str()
+                            stanza.text()
                                 .from_base64()
                                 .map_err(|e| format!("{}", e))
                         );
@@ -121,29 +120,24 @@ impl<S: AsyncRead + AsyncWrite> Future for ClientAuth<S> {
                         self.poll()
                     },
                     Ok(Async::Ready(Some(Packet::Stanza(ref stanza))))
-                        if stanza.name == "success"
-                        && stanza.ns == Some(NS_XMPP_SASL.to_owned()) =>
+                        if stanza.name() == "success"
+                        && stanza.ns() == Some(NS_XMPP_SASL) =>
                     {
                         let start = stream.restart();
                         self.state = ClientAuthState::Start(start);
                         self.poll()
                     },
                     Ok(Async::Ready(Some(Packet::Stanza(ref stanza))))
-                        if stanza.name == "failure"
-                        && stanza.ns == Some(NS_XMPP_SASL.to_owned()) =>
+                        if stanza.name() == "failure"
+                        && stanza.ns() == Some(NS_XMPP_SASL) =>
                     {
                         let mut e = None;
-                        for child in &stanza.children {
-                            match child {
-                                &xml::Xml::ElementNode(ref child) => {
-                                    e = Some(child.name.clone());
-                                    break
-                                },
-                                _ => (),
-                            }
+                        for child in stanza.children() {
+                            e = Some(child.name().clone());
+                            break
                         }
-                        let e = e.unwrap_or_else(|| "Authentication failure".to_owned());
-                        Err(e)
+                        let e = e.unwrap_or_else(|| "Authentication failure");
+                        Err(e.to_owned())
                     },
                     Ok(Async::Ready(event)) => {
                         println!("ClientAuth ignore {:?}", event);

@@ -5,7 +5,7 @@ use futures::sink;
 use tokio_io::{AsyncRead, AsyncWrite};
 use tokio_tls::*;
 use native_tls::TlsConnector;
-use xml;
+use minidom::Element;
 use jid::Jid;
 
 use xmpp_codec::*;
@@ -34,10 +34,9 @@ impl<S: AsyncRead + AsyncWrite> StartTlsClient<S> {
     pub fn from_stream(xmpp_stream: XMPPStream<S>) -> Self {
         let jid = xmpp_stream.jid.clone();
 
-        let nonza = xml::Element::new(
-            "starttls".to_owned(), Some(NS_XMPP_TLS.to_owned()),
-            vec![]
-        );
+        let nonza = Element::builder("starttls")
+            .ns(NS_XMPP_TLS)
+            .build();
         let packet = Packet::Stanza(nonza);
         let send = xmpp_stream.send(packet);
 
@@ -72,7 +71,7 @@ impl<S: AsyncRead + AsyncWrite> Future for StartTlsClient<S> {
             StartTlsClientState::AwaitProceed(mut xmpp_stream) =>
                 match xmpp_stream.poll() {
                     Ok(Async::Ready(Some(Packet::Stanza(ref stanza))))
-                        if stanza.name == "proceed" =>
+                        if stanza.name() == "proceed" =>
                     {
                         let stream = xmpp_stream.stream.into_inner();
                         let connect = TlsConnector::builder().unwrap()

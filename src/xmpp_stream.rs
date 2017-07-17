@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use futures::*;
 use tokio_io::{AsyncRead, AsyncWrite};
 use tokio_io::codec::Framed;
-use xml;
+use minidom::Element;
 use jid::Jid;
 
 use xmpp_codec::*;
@@ -14,14 +14,14 @@ pub struct XMPPStream<S> {
     pub jid: Jid,
     pub stream: Framed<S, XMPPCodec>,
     pub stream_attrs: HashMap<String, String>,
-    pub stream_features: xml::Element,
+    pub stream_features: Element,
 }
 
 impl<S: AsyncRead + AsyncWrite> XMPPStream<S> {
     pub fn new(jid: Jid,
                stream: Framed<S, XMPPCodec>,
                stream_attrs: HashMap<String, String>,
-               stream_features: xml::Element) -> Self {
+               stream_features: Element) -> Self {
         XMPPStream { jid, stream, stream_attrs, stream_features }
     }
 

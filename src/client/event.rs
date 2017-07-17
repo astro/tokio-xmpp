@@ -1,10 +1,10 @@
-use xml;
+use minidom::Element;
 
 #[derive(Debug)]
 pub enum Event {
     Online,
     Disconnected,
-    Stanza(xml::Element),
+    Stanza(Element),
 }
 
 impl Event {
@@ -17,12 +17,12 @@ impl Event {
 
     pub fn is_stanza(&self, name: &str) -> bool {
         match self {
-            &Event::Stanza(ref stanza) => stanza.name == name,
+            &Event::Stanza(ref stanza) => stanza.name() == name,
             _ => false,
         }
     }
 
-    pub fn as_stanza(&self) -> Option<&xml::Element> {
+    pub fn as_stanza(&self) -> Option<&Element> {
         match self {
             &Event::Stanza(ref stanza) => Some(stanza),
             _ => None,

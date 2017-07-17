@@ -6,8 +6,8 @@ use tokio_core::net::TcpStream;
 use tokio_io::{AsyncRead, AsyncWrite};
 use tokio_tls::TlsStream;
 use futures::*;
+use minidom::Element;
 use jid::{Jid, JidParseError};
-use xml;
 use sasl::common::{Credentials, ChannelBinding};
 
 use super::xmpp_codec::Packet;
@@ -76,7 +76,7 @@ impl Client {
 
     fn can_starttls<S>(stream: &xmpp_stream::XMPPStream<S>) -> bool {
         stream.stream_features
-            .get_child("starttls", Some(NS_XMPP_TLS))
+            .get_child("starttls", NS_XMPP_TLS)
             .is_some()
     }
 
@@ -151,7 +151,7 @@ impl Stream for Client {
 }
 
 impl Sink for Client {
-    type SinkItem = xml::Element;
+    type SinkItem = Element;
     type SinkError = String;
 
     fn start_send(&mut self, item: Self::SinkItem) -> StartSend<Self::SinkItem, Self::SinkError> {
