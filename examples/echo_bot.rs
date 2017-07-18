@@ -3,6 +3,7 @@ extern crate tokio_core;
 extern crate tokio_xmpp;
 extern crate jid;
 extern crate minidom;
+extern crate xmpp_parsers;
 
 use std::env::args;
 use std::process::exit;
@@ -10,6 +11,8 @@ use tokio_core::reactor::Core;
 use futures::{Future, Stream, Sink, future};
 use tokio_xmpp::Client;
 use minidom::Element;
+use xmpp_parsers::presence::{Presence, Type as PresenceType, Show as PresenceShow};
+use xmpp_parsers::message::Message;
 
 fn main() {
     let args: Vec<String> = args().collect();
@@ -80,23 +83,16 @@ fn main() {
 
 // Construct a <presence/>
 fn make_presence() -> Element {
-    Element::builder("presence")
-        .append(Element::builder("status")
-                .append("chat")
-                .build())
-        .append(Element::builder("show")
-                .append("Echoing messages")
-                .build())
-        .build()
+    let mut presence = Presence::new(PresenceType::None);
+    presence.show = PresenceShow::Chat;
+    presence.statuses.insert(String::from("en"), String::from("Echoing messages."));
+    Element::from(presence)
 }
 
 // Construct a chat <message/>
 fn make_reply(to: &str, body: String) -> Element {
-    Element::builder("message")
-        .attr("type", "chat")
-        .attr("to", to)
-        .append(Element::builder("body")
-                .append(body)
-                .build())
-        .build()
+    let jid = to.parse().unwrap();
+    let mut message = Message::new(Some(jid));
+    message.bodies.insert(String::new(), body);
+    Element::from(message)
 }
