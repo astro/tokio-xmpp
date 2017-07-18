@@ -1,13 +1,13 @@
 use std::mem::replace;
 use std::io::{Error, ErrorKind};
 use std::collections::HashMap;
-use futures::*;
+use futures::{Future, Async, Poll, Stream, sink, Sink};
 use tokio_io::{AsyncRead, AsyncWrite};
 use tokio_io::codec::Framed;
 use jid::Jid;
 
-use xmpp_codec::*;
-use xmpp_stream::*;
+use xmpp_codec::{XMPPCodec, Packet};
+use xmpp_stream::XMPPStream;
 
 const NS_XMPP_STREAM: &str = "http://etherx.jabber.org/streams";
 

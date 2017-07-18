@@ -1,17 +1,16 @@
 use std::mem::replace;
-use futures::*;
-use futures::sink;
+use futures::{Future, Poll, Async, sink, Sink, Stream};
 use tokio_io::{AsyncRead, AsyncWrite};
 use minidom::Element;
 use sasl::common::Credentials;
-use sasl::common::scram::*;
+use sasl::common::scram::{Sha1, Sha256};
 use sasl::client::Mechanism;
-use sasl::client::mechanisms::*;
+use sasl::client::mechanisms::{Scram, Plain, Anonymous};
 use serialize::base64::{self, ToBase64, FromBase64};
 
-use xmpp_codec::*;
-use xmpp_stream::*;
-use stream_start::*;
+use xmpp_codec::Packet;
+use xmpp_stream::XMPPStream;
+use stream_start::StreamStart;
 
 const NS_XMPP_SASL: &str = "urn:ietf:params:xml:ns:xmpp-sasl";
 

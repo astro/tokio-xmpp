@@ -1,14 +1,13 @@
 use std::mem::replace;
 use std::error::Error;
 use std::str::FromStr;
-use futures::*;
-use futures::sink;
+use futures::{Future, Poll, Async, sink, Sink, Stream};
 use tokio_io::{AsyncRead, AsyncWrite};
 use jid::Jid;
 use minidom::Element;
 
-use xmpp_codec::*;
-use xmpp_stream::*;
+use xmpp_codec::Packet;
+use xmpp_stream::XMPPStream;
 
 const NS_XMPP_BIND: &str = "urn:ietf:params:xml:ns:xmpp-bind";
 const BIND_REQ_ID: &str = "resource-bind";

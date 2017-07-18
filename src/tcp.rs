@@ -5,7 +5,7 @@ use tokio_core::reactor::Handle;
 use tokio_core::net::{TcpStream, TcpStreamNew};
 use jid::Jid;
 
-use xmpp_stream::*;
+use xmpp_stream::XMPPStream;
 use stream_start::StreamStart;
 
 pub struct TcpClient {

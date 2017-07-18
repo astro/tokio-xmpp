@@ -12,7 +12,7 @@ use tokio_io::codec::{Encoder, Decoder};
 use minidom::{Element, Node};
 use xml5ever::tokenizer::{XmlTokenizer, TokenSink, Token, Tag, TagKind};
 use xml5ever::interface::Attribute;
-use bytes::*;
+use bytes::{BytesMut, BufMut};
 
 // const NS_XMLNS: &'static str = "http://www.w3.org/2000/xmlns/";
 

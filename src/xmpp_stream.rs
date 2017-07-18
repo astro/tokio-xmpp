@@ -1,12 +1,12 @@
 use std::collections::HashMap;
-use futures::*;
+use futures::{Poll, Stream, Sink, StartSend};
 use tokio_io::{AsyncRead, AsyncWrite};
 use tokio_io::codec::Framed;
 use minidom::Element;
 use jid::Jid;
 
-use xmpp_codec::*;
-use stream_start::*;
+use xmpp_codec::XMPPCodec;
+use stream_start::StreamStart;
 
 pub const NS_XMPP_STREAM: &str = "http://etherx.jabber.org/streams";
 

@@ -1,11 +1,11 @@
 use std::str::FromStr;
 use std::collections::HashMap;
 use std::net::SocketAddr;
-use futures::*;
+use futures::{Future, Poll, Async, Stream};
 use tokio_core::reactor::Handle;
 use tokio_core::net::{TcpStream, TcpStreamNew};
 use domain::resolv::Resolver;
-use domain::resolv::lookup::srv::*;
+use domain::resolv::lookup::srv::{lookup_srv, LookupSrv, LookupSrvStream};
 use domain::bits::DNameBuf;
 
 pub struct Connecter {

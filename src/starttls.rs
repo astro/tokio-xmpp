@@ -3,13 +3,13 @@ use futures::{Future, Sink, Poll, Async};
 use futures::stream::Stream;
 use futures::sink;
 use tokio_io::{AsyncRead, AsyncWrite};
-use tokio_tls::*;
+use tokio_tls::{TlsStream, TlsConnectorExt, ConnectAsync};
 use native_tls::TlsConnector;
 use minidom::Element;
 use jid::Jid;
 
-use xmpp_codec::*;
-use xmpp_stream::*;
+use xmpp_codec::Packet;
+use xmpp_stream::XMPPStream;
 use stream_start::StreamStart;
 
 

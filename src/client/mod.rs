@@ -5,7 +5,7 @@ use tokio_core::reactor::Handle;
 use tokio_core::net::TcpStream;
 use tokio_io::{AsyncRead, AsyncWrite};
 use tokio_tls::TlsStream;
-use futures::*;
+use futures::{Future, Stream, Poll, Async, Sink, StartSend, AsyncSink};
 use minidom::Element;
 use jid::{Jid, JidParseError};
 use sasl::common::{Credentials, ChannelBinding};
@@ -17,9 +17,9 @@ use super::starttls::{NS_XMPP_TLS, StartTlsClient};
 use super::happy_eyeballs::Connecter;
 
 mod auth;
-use self::auth::*;
+use self::auth::ClientAuth;
 mod bind;
-use self::bind::*;
+use self::bind::ClientBind;
 mod event;
 pub use self::event::Event as ClientEvent;
 
