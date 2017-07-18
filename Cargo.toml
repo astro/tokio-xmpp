@@ -10,7 +10,7 @@ tokio-io = "*"
 bytes = "0.4.4"
 xml5ever = "*"
 tendril = "*"
-minidom = { path = "../../programs/minidom-rs" }
+minidom = "0.5"
 native-tls = "*"
 tokio-tls = "*"
 sasl = "*"
