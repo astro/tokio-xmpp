@@ -80,15 +80,29 @@ impl Future for Connecter {
                 return Err(format!("{}", e)),
         }
 
-        for mut connect in self.connects.values_mut() {
-            match connect.poll() {
-                Ok(Async::NotReady) => (),
-                Ok(Async::Ready(tcp_stream)) =>
-                    // Success!
-                    return Ok(Async::Ready(tcp_stream)),
-                Err(e) =>
-                    println!("{}", e),
+        let mut connected_stream = None;
+        self.connects.retain(|_, connect| {
+            if connected_stream.is_some() {
+                return false;
             }
+
+            match connect.poll() {
+                Ok(Async::NotReady) => true,
+                Ok(Async::Ready(tcp_stream)) => {
+                    // Success!
+                    connected_stream = Some(tcp_stream);
+                    false
+                },
+                Err(e) => {
+                    println!("{}", e);
+                    false
+                },
+            }
+        });
+        match connected_stream {
+            Some(tcp_stream) =>
+                return Ok(Async::Ready(tcp_stream)),
+            None => (),
         }
 
         if  self.lookup.is_none() &&
