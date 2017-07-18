@@ -98,8 +98,8 @@ impl ParserSink {
 
         if self.stack.is_empty() {
             let attrs = HashMap::from_iter(
-                el.attrs()
-                    .map(|(name, value)| (name.to_owned(), value.to_owned()))
+                tag.attrs.iter()
+                    .map(|attr| (attr.name.local.as_ref().to_owned(), attr.value.as_ref().to_owned()))
             );
             self.push_queue(Packet::StreamStart(attrs));
         }

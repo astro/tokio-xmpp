@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use futures::{Poll, Stream, Sink, StartSend};
 use tokio_io::{AsyncRead, AsyncWrite};
 use tokio_io::codec::Framed;
@@ -13,21 +12,21 @@ pub const NS_XMPP_STREAM: &str = "http://etherx.jabber.org/streams";
 pub struct XMPPStream<S> {
     pub jid: Jid,
     pub stream: Framed<S, XMPPCodec>,
-    pub stream_attrs: HashMap<String, String>,
     pub stream_features: Element,
+    pub ns: String,
 }
 
 impl<S: AsyncRead + AsyncWrite> XMPPStream<S> {
     pub fn new(jid: Jid,
                stream: Framed<S, XMPPCodec>,
-               stream_attrs: HashMap<String, String>,
+               ns: String,
                stream_features: Element) -> Self {
-        XMPPStream { jid, stream, stream_attrs, stream_features }
+        XMPPStream { jid, stream, stream_features, ns }
     }
 
-    pub fn from_stream(stream: S, jid: Jid) -> StreamStart<S> {
+    pub fn start(stream: S, jid: Jid, ns: String) -> StreamStart<S> {
         let xmpp_stream = AsyncRead::framed(stream, XMPPCodec::new());
-        StreamStart::from_stream(xmpp_stream, jid)
+        StreamStart::from_stream(xmpp_stream, jid, ns)
     }
 
     pub fn into_inner(self) -> S {
@@ -35,7 +34,7 @@ impl<S: AsyncRead + AsyncWrite> XMPPStream<S> {
     }
 
     pub fn restart(self) -> StreamStart<S> {
-        Self::from_stream(self.stream.into_inner(), self.jid)
+        Self::start(self.stream.into_inner(), self.jid, self.ns)
     }
 }
 

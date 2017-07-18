@@ -12,7 +12,6 @@ use sasl::common::{Credentials, ChannelBinding};
 
 use super::xmpp_codec::Packet;
 use super::xmpp_stream;
-use super::tcp::TcpClient;
 use super::starttls::{NS_XMPP_TLS, StartTlsClient};
 use super::happy_eyeballs::Connecter;
 
@@ -29,6 +28,7 @@ pub struct Client {
 }
 
 type XMPPStream = xmpp_stream::XMPPStream<TlsStream<TcpStream>>;
+const NS_JABBER_CLIENT: &str = "jabber:client";
 
 enum ClientState {
     Invalid,
@@ -50,26 +50,31 @@ impl Client {
 
     fn make_connect(jid: Jid, password: String, handle: Handle) -> Box<Future<Item=XMPPStream, Error=String>> {
         let username = jid.node.as_ref().unwrap().to_owned();
+        let jid1 = jid.clone();
+        let jid2 = jid.clone();
         let password = password;
         Box::new(
             Connecter::from_lookup(handle, &jid.domain, "_xmpp-client._tcp", 5222)
                 .expect("Connector::from_lookup")
-                .and_then(|tcp_stream|
-                          TcpClient::from_stream(jid, tcp_stream)
+                .and_then(move |tcp_stream|
+                          xmpp_stream::XMPPStream::start(tcp_stream, jid1, NS_JABBER_CLIENT.to_owned())
                           .map_err(|e| format!("{}", e))
-                ).and_then(|stream| {
-                    if Self::can_starttls(&stream) {
-                        Self::starttls(stream)
+                ).and_then(|xmpp_stream| {
+                    if Self::can_starttls(&xmpp_stream) {
+                        Self::starttls(xmpp_stream)
                     } else {
                         panic!("No STARTTLS")
                     }
-                }).and_then(move |stream| {
-                    Self::auth(stream, username, password).expect("auth")
-                }).and_then(|stream| {
-                    Self::bind(stream)
-                }).and_then(|stream| {
-                    println!("Bound to {}", stream.jid);
-                    Ok(stream)
+                }).and_then(|tls_stream|
+                          XMPPStream::start(tls_stream, jid2, NS_JABBER_CLIENT.to_owned())
+                          .map_err(|e| format!("{}", e))
+                ).and_then(move |xmpp_stream| {
+                    Self::auth(xmpp_stream, username, password).expect("auth")
+                }).and_then(|xmpp_stream| {
+                    Self::bind(xmpp_stream)
+                }).and_then(|xmpp_stream| {
+                    println!("Bound to {}", xmpp_stream.jid);
+                    Ok(xmpp_stream)
                 })
         )
     }

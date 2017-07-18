@@ -1,4 +1,3 @@
-#[macro_use]
 extern crate futures;
 extern crate tokio_core;
 extern crate tokio_io;
@@ -16,8 +15,6 @@ extern crate domain;
 pub mod xmpp_codec;
 pub mod xmpp_stream;
 mod stream_start;
-mod tcp;
-pub use tcp::TcpClient;
 mod starttls;
 pub use starttls::StartTlsClient;
 mod happy_eyeballs;

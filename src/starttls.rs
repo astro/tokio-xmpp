@@ -10,7 +10,6 @@ use jid::Jid;
 
 use xmpp_codec::Packet;
 use xmpp_stream::XMPPStream;
-use stream_start::StreamStart;
 
 
 pub const NS_XMPP_TLS: &str = "urn:ietf:params:xml:ns:xmpp-tls";
@@ -26,7 +25,6 @@ enum StartTlsClientState<S: AsyncRead + AsyncWrite> {
     SendStartTls(sink::Send<XMPPStream<S>>),
     AwaitProceed(XMPPStream<S>),
     StartingTls(ConnectAsync<S>),
-    Start(StreamStart<TlsStream<S>>),
 }
 
 impl<S: AsyncRead + AsyncWrite> StartTlsClient<S> {
@@ -48,7 +46,7 @@ impl<S: AsyncRead + AsyncWrite> StartTlsClient<S> {
 }
 
 impl<S: AsyncRead + AsyncWrite> Future for StartTlsClient<S> {
-    type Item = XMPPStream<TlsStream<S>>;
+    type Item = TlsStream<S>;
     type Error = String;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
@@ -92,24 +90,10 @@ impl<S: AsyncRead + AsyncWrite> Future for StartTlsClient<S> {
                 },
             StartTlsClientState::StartingTls(mut connect) =>
                 match connect.poll() {
-                    Ok(Async::Ready(tls_stream)) => {
-                        println!("TLS stream established");
-                        let start = XMPPStream::from_stream(tls_stream, self.jid.clone());
-                        let new_state = StartTlsClientState::Start(start);
-                        retry = true;
-                        (new_state, Ok(Async::NotReady))
-                    },
+                    Ok(Async::Ready(tls_stream)) =>
+                        (StartTlsClientState::Invalid, Ok(Async::Ready(tls_stream))),
                     Ok(Async::NotReady) =>
                         (StartTlsClientState::StartingTls(connect), Ok(Async::NotReady)),
-                    Err(e) =>
-                        (StartTlsClientState::StartingTls(connect),  Err(format!("{}", e))),
-                },
-            StartTlsClientState::Start(mut start) =>
-                match start.poll() {
-                    Ok(Async::Ready(xmpp_stream)) =>
-                        (StartTlsClientState::Invalid, Ok(Async::Ready(xmpp_stream))),
-                    Ok(Async::NotReady) =>
-                        (StartTlsClientState::Start(start), Ok(Async::NotReady)),
                     Err(e) =>
                         (StartTlsClientState::Invalid, Err(format!("{}", e))),
                 },
