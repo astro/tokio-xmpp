@@ -86,7 +86,7 @@ fn make_presence() -> Element {
     let mut presence = Presence::new(PresenceType::None);
     presence.show = PresenceShow::Chat;
     presence.statuses.insert(String::from("en"), String::from("Echoing messages."));
-    Element::from(presence)
+    presence.into()
 }
 
 // Construct a chat <message/>
@@ -94,5 +94,5 @@ fn make_reply(to: &str, body: String) -> Element {
     let jid = to.parse().unwrap();
     let mut message = Message::new(Some(jid));
     message.bodies.insert(String::new(), body);
-    Element::from(message)
+    message.into()
 }
