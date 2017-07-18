@@ -247,6 +247,12 @@ impl Encoder for XMPPCodec {
     type Error = Error;
 
     fn encode(&mut self, item: Self::Item, dst: &mut BytesMut) -> Result<(), Self::Error> {
+        let remaining = dst.capacity() - dst.len();
+        let max_stanza_size: usize = 2usize.pow(16);
+        if remaining < max_stanza_size {
+            dst.reserve(max_stanza_size - remaining);
+        }
+
         match item {
             Packet::StreamStart(start_attrs) => {
                 let mut buf = String::new();
@@ -420,5 +426,29 @@ mod tests {
                 => true,
             _ => false,
         });
+    }
+
+    /// By default, encode() only get's a BytesMut that has 8kb space reserved.
+    #[test]
+    fn test_large_stanza() {
+        use std::io::Cursor;
+        use futures::{Future, Sink};
+        use tokio_io::codec::FramedWrite;
+        let framed = FramedWrite::new(Cursor::new(vec![]), XMPPCodec::new());
+        let mut text = "".to_owned();
+        for _ in 0..2usize.pow(15) {
+            text = text + "A";
+        }
+        let stanza = Element::builder("message")
+            .append(
+                Element::builder("body")
+                    .append(&text)
+                    .build()
+            )
+            .build();
+        let framed = framed.send(Packet::Stanza(stanza))
+            .wait()
+            .expect("send");
+        assert_eq!(framed.get_ref().get_ref(), &("<message><body>".to_owned() + &text + "</body></message>").as_bytes());
     }
 }
