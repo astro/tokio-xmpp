@@ -74,7 +74,7 @@ impl<S: AsyncWrite> ClientAuth<S> {
             .ns(NS_XMPP_SASL);
         let nonza = attrs.iter()
             .fold(nonza, |nonza, &(name, value)| nonza.attr(name, value))
-            .append(content.to_base64(base64::URL_SAFE))
+            .append(content.to_base64(base64::STANDARD))
             .build();
 
         let send = stream.send(Packet::Stanza(nonza));
