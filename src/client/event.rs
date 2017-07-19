@@ -28,4 +28,11 @@ impl Event {
             _ => None,
         }
     }
+
+    pub fn into_stanza(self) -> Option<Element> {
+        match self {
+            Event::Stanza(stanza) => Some(stanza),
+            _ => None,
+        }
+    }
 }

@@ -1,3 +1,5 @@
+#![feature(try_from)]
+
 extern crate futures;
 extern crate tokio_core;
 extern crate tokio_xmpp;
@@ -7,12 +9,14 @@ extern crate xmpp_parsers;
 
 use std::env::args;
 use std::process::exit;
+use std::convert::TryFrom;
 use tokio_core::reactor::Core;
 use futures::{Future, Stream, Sink, future};
 use tokio_xmpp::Client;
 use minidom::Element;
 use xmpp_parsers::presence::{Presence, Type as PresenceType, Show as PresenceShow};
-use xmpp_parsers::message::Message;
+use xmpp_parsers::message::{Message, MessageType};
+use jid::Jid;
 
 fn main() {
     let args: Vec<String> = args().collect();
@@ -50,15 +54,11 @@ fn main() {
 
             let presence = make_presence();
             send(presence);
-        } else if let Some(stanza) = event.as_stanza() {
-            if stanza.name() == "message" &&
-                stanza.attr("type") != Some("error") {
+        } else if let Some(stanza) = event.into_stanza() {
+            if let Ok(message) = Message::try_from(stanza) {
+                if message.type_ != MessageType::Error {
                     // This is a message we'll echo
-                    let from = stanza.attr("from");
-                    let body = stanza.get_child("body", "jabber:client")
-                        .map(|el| el.text());
-
-                    match (from, body) {
+                    match (message.from, message.bodies.get("")) {
                         (Some(from), Some(body)) => {
                             let reply = make_reply(from, body);
                             send(reply);
@@ -66,6 +66,7 @@ fn main() {
                         _ => (),
                     };
                 }
+            }
         }
 
         Box::new(future::ok(()))
@@ -90,9 +91,8 @@ fn make_presence() -> Element {
 }
 
 // Construct a chat <message/>
-fn make_reply(to: &str, body: String) -> Element {
-    let jid = to.parse().unwrap();
-    let mut message = Message::new(Some(jid));
-    message.bodies.insert(String::new(), body);
+fn make_reply(to: Jid, body: &str) -> Element {
+    let mut message = Message::new(Some(to));
+    message.bodies.insert(String::new(), body.to_owned());
     message.into()
 }
