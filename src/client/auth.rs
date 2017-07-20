@@ -130,12 +130,9 @@ impl<S: AsyncRead + AsyncWrite> Future for ClientAuth<S> {
                         if stanza.name() == "failure"
                         && stanza.ns() == Some(NS_XMPP_SASL) =>
                     {
-                        let mut e = None;
-                        for child in stanza.children() {
-                            e = Some(child.name().clone());
-                            break
-                        }
-                        let e = e.unwrap_or_else(|| "Authentication failure");
+                        let e = stanza.children().next()
+                            .map(|child| child.name())
+                            .unwrap_or("Authentication failure");
                         Err(e.to_owned())
                     },
                     Ok(Async::Ready(event)) => {

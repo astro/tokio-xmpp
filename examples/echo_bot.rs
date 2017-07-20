@@ -54,18 +54,17 @@ fn main() {
 
             let presence = make_presence();
             send(presence);
-        } else if let Some(stanza) = event.into_stanza() {
-            if let Ok(message) = Message::try_from(stanza) {
-                if message.type_ != MessageType::Error {
-                    // This is a message we'll echo
-                    match (message.from, message.bodies.get("")) {
-                        (Some(from), Some(body)) => {
-                            let reply = make_reply(from, body);
-                            send(reply);
-                        },
-                        _ => (),
-                    };
-                }
+        } else if let Some(message) = event.into_stanza()
+            .and_then(|stanza| Message::try_from(stanza).ok())
+        {
+            // This is a message we'll echo
+            match (message.from, message.bodies.get("")) {
+                (Some(from), Some(body)) =>
+                    if message.type_ != MessageType::Error {
+                        let reply = make_reply(from, body);
+                        send(reply);
+                    },
+                _ => (),
             }
         }
 

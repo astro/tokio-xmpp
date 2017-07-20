@@ -48,9 +48,8 @@ impl ParserSink {
 
     fn lookup_ns(&self, prefix: &Option<String>) -> Option<&str> {
         for nss in self.ns_stack.iter().rev() {
-            match nss.get(prefix) {
-                Some(ns) => return Some(ns),
-                None => (),
+            if let Some(ns) = nss.get(prefix) {
+                return Some(ns);
             }
         }
 
@@ -77,9 +76,11 @@ impl ParserSink {
 
         let el = {
             let mut el_builder = Element::builder(tag.name.local.as_ref());
-            match self.lookup_ns(&tag.name.prefix.map(|prefix| prefix.as_ref().to_owned())) {
-                Some(el_ns) => el_builder = el_builder.ns(el_ns),
-                None => (),
+            if let Some(el_ns) = self.lookup_ns(
+                &tag.name.prefix.map(|prefix|
+                                     prefix.as_ref().to_owned())
+            ) {
+                el_builder = el_builder.ns(el_ns);
             }
             for attr in &tag.attrs {
                 match attr.name.local.as_ref() {
@@ -178,7 +179,7 @@ pub struct XMPPCodec {
 
 impl XMPPCodec {
     pub fn new() -> Self {
-        let queue = Rc::new(RefCell::new((VecDeque::new())));
+        let queue = Rc::new(RefCell::new(VecDeque::new()));
         let sink = ParserSink::new(queue.clone());
         // TODO: configure parser?
         let parser = XmlTokenizer::new(sink, Default::default());
@@ -191,13 +192,19 @@ impl XMPPCodec {
     }
 }
 
+impl Default for XMPPCodec {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Decoder for XMPPCodec {
     type Item = Packet;
     type Error = Error;
 
     fn decode(&mut self, buf: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
         let buf1: Box<AsRef<[u8]>> =
-            if self.buf.len() > 0 && buf.len() > 0 {
+            if ! self.buf.is_empty() && ! buf.is_empty() {
                 let mut prefix = std::mem::replace(&mut self.buf, vec![]);
                 prefix.extend_from_slice(buf.take().as_ref());
                 Box::new(prefix)
@@ -207,7 +214,7 @@ impl Decoder for XMPPCodec {
         let buf1 = buf1.as_ref().as_ref();
         match from_utf8(buf1) {
             Ok(s) => {
-                if s.len() > 0 {
+                if ! s.is_empty() {
                     println!("<< {}", s);
                     let tendril = FromIterator::from_iter(s.chars());
                     self.parser.feed(tendril);
@@ -257,7 +264,7 @@ impl Encoder for XMPPCodec {
             Packet::StreamStart(start_attrs) => {
                 let mut buf = String::new();
                 write!(buf, "<stream:stream").unwrap();
-                for (name, value) in start_attrs.into_iter() {
+                for (name, value) in start_attrs {
                     write!(buf, " {}=\"{}\"", escape(&name), escape(&value))
                         .unwrap();
                     if name == "xmlns" {
@@ -302,7 +309,7 @@ pub fn write_element<W: Write>(el: &Element, writer: &mut W, parent_ns: Option<&
     write!(writer, "<")?;
     write!(writer, "{}", el.name())?;
 
-    if let Some(ref ns) = el.ns() {
+    if let Some(ns) = el.ns() {
         if parent_ns.map(|s| s.as_ref()) != el.ns() {
             write!(writer, " xmlns=\"{}\"", ns)?;
         }
@@ -320,10 +327,10 @@ pub fn write_element<W: Write>(el: &Element, writer: &mut W, parent_ns: Option<&
     write!(writer, ">")?;
 
     for node in el.nodes() {
-        match node {
-            &Node::Element(ref child) =>
+        match *node {
+            Node::Element(ref child) =>
                 write_element(child, writer, el.ns())?,
-            &Node::Text(ref text) =>
+            Node::Text(ref text) =>
                 write_text(text, writer)?,
         }
     }
@@ -332,7 +339,7 @@ pub fn write_element<W: Write>(el: &Element, writer: &mut W, parent_ns: Option<&
     Ok(())
 }
 
-/// Copied from RustyXML for now
+/// Copied from `RustyXML` for now
 pub fn escape(input: &str) -> String {
     let mut result = String::with_capacity(input.len());
 

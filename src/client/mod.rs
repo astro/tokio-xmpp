@@ -130,10 +130,6 @@ impl Stream for Client {
             },
             ClientState::Connected(mut stream) => {
                 match stream.poll() {
-                    Ok(Async::NotReady) => {
-                        self.state = ClientState::Connected(stream);
-                        Ok(Async::NotReady)
-                    },
                     Ok(Async::Ready(None)) => {
                         // EOF
                         self.state = ClientState::Disconnected;
@@ -143,6 +139,7 @@ impl Stream for Client {
                         self.state = ClientState::Connected(stream);
                         Ok(Async::Ready(Some(ClientEvent::Stanza(stanza))))
                     },
+                    Ok(Async::NotReady) |
                     Ok(Async::Ready(_)) => {
                         self.state = ClientState::Connected(stream);
                         Ok(Async::NotReady)
@@ -179,8 +176,8 @@ impl Sink for Client {
     }
 
     fn poll_complete(&mut self) -> Poll<(), Self::SinkError> {
-        match &mut self.state {
-            &mut ClientState::Connected(ref mut stream) =>
+        match self.state {
+            ClientState::Connected(ref mut stream) =>
                 stream.poll_complete()
                 .map_err(|e| e.description().to_owned()),
             _ =>

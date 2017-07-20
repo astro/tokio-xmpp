@@ -89,9 +89,7 @@ impl<S: AsyncRead + AsyncWrite> Future for StreamStart<S> {
                         } else {
                             (StreamStartState::RecvFeatures(stream, stream_ns), Ok(Async::NotReady))
                         },
-                    Ok(Async::Ready(_)) =>
-                        (StreamStartState::RecvFeatures(stream, stream_ns), Ok(Async::NotReady)),
-                    Ok(Async::NotReady) =>
+                    Ok(Async::Ready(_)) | Ok(Async::NotReady) =>
                         (StreamStartState::RecvFeatures(stream, stream_ns), Ok(Async::NotReady)),
                     Err(e) =>
                         return Err(e),

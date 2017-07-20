@@ -44,13 +44,10 @@ fn make_bind_request(resource: Option<&String>) -> Element {
         .attr("id", BIND_REQ_ID);
     let mut bind_el = Element::builder("bind")
         .ns(NS_XMPP_BIND);
-    match resource {
-        Some(resource) => {
-            let resource_el = Element::builder("resource")
-                .append(resource);
-            bind_el = bind_el.append(resource_el.build());
-        },
-        None => (),
+    if let Some(resource) = resource {
+        let resource_el = Element::builder("resource")
+            .append(resource);
+        bind_el = bind_el.append(resource_el.build());
     }
     iq.append(bind_el.build())
         .build()
@@ -87,7 +84,7 @@ impl<S: AsyncRead + AsyncWrite> Future for ClientBind<S> {
                         && iq.attr("id") == Some(BIND_REQ_ID) => {
                             match iq.attr("type") {
                                 Some("result") => {
-                                    get_bind_response_jid(&iq)
+                                    get_bind_response_jid(iq)
                                         .map(|jid| stream.jid = jid);
                                     Ok(Async::Ready(stream))
                                 },

@@ -46,8 +46,7 @@ impl Future for Connecter {
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         match self.lookup.as_mut().map(|mut lookup| lookup.poll()) {
-            None => (),
-            Some(Ok(Async::NotReady)) => (),
+            None | Some(Ok(Async::NotReady)) => (),
             Some(Ok(Async::Ready(found_srvs))) => {
                 self.lookup = None;
                 match found_srvs {
@@ -62,8 +61,7 @@ impl Future for Connecter {
         }
 
         match self.srvs.as_mut().map(|mut srv| srv.poll()) {
-            None => (),
-            Some(Ok(Async::NotReady)) => (),
+            None | Some(Ok(Async::NotReady)) => (),
             Some(Ok(Async::Ready(None))) =>
                 self.srvs = None,
             Some(Ok(Async::Ready(Some(srv_item)))) => {
@@ -99,10 +97,8 @@ impl Future for Connecter {
                 },
             }
         });
-        match connected_stream {
-            Some(tcp_stream) =>
-                return Ok(Async::Ready(tcp_stream)),
-            None => (),
+        if let Some(tcp_stream) = connected_stream {
+            return Ok(Async::Ready(tcp_stream));
         }
 
         if  self.lookup.is_none() &&
