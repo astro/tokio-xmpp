@@ -5,10 +5,11 @@ use tokio_core::reactor::Handle;
 use tokio_core::net::TcpStream;
 use tokio_io::{AsyncRead, AsyncWrite};
 use tokio_tls::TlsStream;
-use futures::{Future, Stream, Poll, Async, Sink, StartSend, AsyncSink};
+use futures::{future, Future, Stream, Poll, Async, Sink, StartSend, AsyncSink};
 use minidom::Element;
 use jid::{Jid, JidParseError};
 use sasl::common::{Credentials, ChannelBinding};
+use idna;
 
 use super::xmpp_codec::Packet;
 use super::xmpp_stream;
@@ -53,19 +54,27 @@ impl Client {
         let jid1 = jid.clone();
         let jid2 = jid.clone();
         let password = password;
+        let domain = match idna::domain_to_ascii(&jid.domain) {
+            Ok(domain) =>
+                domain,
+            Err(e) =>
+                return Box::new(future::err(format!("{:?}", e))),
+        };
         Box::new(
-            Connecter::from_lookup(handle, &jid.domain, "_xmpp-client._tcp", 5222)
+            Connecter::from_lookup(handle, &domain, "_xmpp-client._tcp", 5222)
                 .expect("Connector::from_lookup")
                 .and_then(move |tcp_stream|
                           xmpp_stream::XMPPStream::start(tcp_stream, jid1, NS_JABBER_CLIENT.to_owned())
                           .map_err(|e| format!("{}", e))
                 ).and_then(|xmpp_stream| {
                     if Self::can_starttls(&xmpp_stream) {
-                        Self::starttls(xmpp_stream)
+                        Ok(Self::starttls(xmpp_stream))
                     } else {
-                        panic!("No STARTTLS")
+                        Err("No STARTTLS".to_owned())
                     }
-                }).and_then(|tls_stream|
+                }).and_then(|starttls|
+                            starttls
+                ).and_then(|tls_stream|
                           XMPPStream::start(tls_stream, jid2, NS_JABBER_CLIENT.to_owned())
                           .map_err(|e| format!("{}", e))
                 ).and_then(move |xmpp_stream| {
