@@ -4,6 +4,7 @@ use futures::{Future, Async, Poll, Stream, sink, Sink};
 use tokio_io::{AsyncRead, AsyncWrite};
 use tokio_io::codec::Framed;
 use jid::Jid;
+use minidom::Element;
 
 use xmpp_codec::{XMPPCodec, Packet};
 use xmpp_stream::XMPPStream;
@@ -63,14 +64,25 @@ impl<S: AsyncRead + AsyncWrite> Future for StreamStart<S> {
             StreamStartState::RecvStart(mut stream) =>
                 match stream.poll() {
                     Ok(Async::Ready(Some(Packet::StreamStart(stream_attrs)))) => {
-                        retry = true;
                         let stream_ns = match stream_attrs.get("xmlns") {
                             Some(ns) => ns.clone(),
                             None =>
                                 return Err(Error::from(ErrorKind::InvalidData)),
                         };
-                        // TODO: skip RecvFeatures for version < 1.0
-                        (StreamStartState::RecvFeatures(stream, stream_ns), Ok(Async::NotReady))
+                        if self.ns == "jabber:client" {
+                            retry = true;
+                            // TODO: skip RecvFeatures for version < 1.0
+                            (StreamStartState::RecvFeatures(stream, stream_ns), Ok(Async::NotReady))
+                        } else {
+                            let id = match stream_attrs.get("id") {
+                                Some(id) => id.clone(),
+                                None =>
+                                    return Err(Error::from(ErrorKind::InvalidData)),
+                            };
+                                                                                                    // FIXME: huge hack, shouldn’t be an element!
+                            let stream = XMPPStream::new(self.jid.clone(), stream, self.ns.clone(), Element::builder(id).build());
+                            (StreamStartState::Invalid, Ok(Async::Ready(stream)))
+                        }
                     },
                     Ok(Async::Ready(_)) =>
                         return Err(Error::from(ErrorKind::InvalidData)),

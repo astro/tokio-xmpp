@@ -12,6 +12,7 @@ extern crate rustc_serialize as serialize;
 extern crate jid;
 extern crate domain;
 extern crate idna;
+extern crate sha_1;
 
 pub mod xmpp_codec;
 pub mod xmpp_stream;
@@ -21,3 +22,5 @@ pub use starttls::StartTlsClient;
 mod happy_eyeballs;
 mod client;
 pub use client::{Client, ClientEvent};
+mod component;
+pub use component::{Component, ComponentEvent};
