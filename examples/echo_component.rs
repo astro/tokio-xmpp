@@ -56,6 +56,7 @@ fn main() {
         if event.is_online() {
             println!("Online!");
 
+            // TODO: replace these hardcoded JIDs
             let presence = make_presence(Jid::from_str("test@component.linkmauve.fr/coucou").unwrap(), Jid::from_str("linkmauve@linkmauve.fr").unwrap());
             send(presence);
         } else if let Some(message) = event.into_stanza()
