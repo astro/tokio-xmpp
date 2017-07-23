@@ -11,11 +11,10 @@ use jid::{Jid, JidParseError};
 use super::xmpp_codec::Packet;
 use super::xmpp_stream;
 use super::happy_eyeballs::Connecter;
+use super::event::Event;
 
 mod auth;
 use self::auth::ComponentAuth;
-mod event;
-pub use self::event::Event as ComponentEvent;
 
 pub struct Component {
     pub jid: Jid,
@@ -67,7 +66,7 @@ impl Component {
 }
 
 impl Stream for Component {
-    type Item = ComponentEvent;
+    type Item = Event;
     type Error = String;
 
     fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
@@ -82,7 +81,7 @@ impl Stream for Component {
                 match connect.poll() {
                     Ok(Async::Ready(stream)) => {
                         self.state = ComponentState::Connected(stream);
-                        Ok(Async::Ready(Some(ComponentEvent::Online)))
+                        Ok(Async::Ready(Some(Event::Online)))
                     },
                     Ok(Async::NotReady) => {
                         self.state = ComponentState::Connecting(connect);
@@ -101,11 +100,11 @@ impl Stream for Component {
                     Ok(Async::Ready(None)) => {
                         // EOF
                         self.state = ComponentState::Disconnected;
-                        Ok(Async::Ready(Some(ComponentEvent::Disconnected)))
+                        Ok(Async::Ready(Some(Event::Disconnected)))
                     },
                     Ok(Async::Ready(Some(Packet::Stanza(stanza)))) => {
                         self.state = ComponentState::Connected(stream);
-                        Ok(Async::Ready(Some(ComponentEvent::Stanza(stanza))))
+                        Ok(Async::Ready(Some(Event::Stanza(stanza))))
                     },
                     Ok(Async::Ready(_)) => {
                         self.state = ComponentState::Connected(stream);

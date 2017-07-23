@@ -15,13 +15,12 @@ use super::xmpp_codec::Packet;
 use super::xmpp_stream;
 use super::starttls::{NS_XMPP_TLS, StartTlsClient};
 use super::happy_eyeballs::Connecter;
+use super::event::Event;
 
 mod auth;
 use self::auth::ClientAuth;
 mod bind;
 use self::bind::ClientBind;
-mod event;
-pub use self::event::Event as ClientEvent;
 
 pub struct Client {
     pub jid: Jid,
@@ -112,7 +111,7 @@ impl Client {
 }
 
 impl Stream for Client {
-    type Item = ClientEvent;
+    type Item = Event;
     type Error = String;
 
     fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
@@ -127,7 +126,7 @@ impl Stream for Client {
                 match connect.poll() {
                     Ok(Async::Ready(stream)) => {
                         self.state = ClientState::Connected(stream);
-                        Ok(Async::Ready(Some(ClientEvent::Online)))
+                        Ok(Async::Ready(Some(Event::Online)))
                     },
                     Ok(Async::NotReady) => {
                         self.state = ClientState::Connecting(connect);
@@ -142,11 +141,11 @@ impl Stream for Client {
                     Ok(Async::Ready(None)) => {
                         // EOF
                         self.state = ClientState::Disconnected;
-                        Ok(Async::Ready(Some(ClientEvent::Disconnected)))
+                        Ok(Async::Ready(Some(Event::Disconnected)))
                     },
                     Ok(Async::Ready(Some(Packet::Stanza(stanza)))) => {
                         self.state = ClientState::Connected(stream);
-                        Ok(Async::Ready(Some(ClientEvent::Stanza(stanza))))
+                        Ok(Async::Ready(Some(Event::Stanza(stanza))))
                     },
                     Ok(Async::NotReady) |
                     Ok(Async::Ready(_)) => {
