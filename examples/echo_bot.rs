@@ -1,15 +1,14 @@
-#![feature(try_from)]
-
 extern crate futures;
 extern crate tokio_core;
 extern crate tokio_xmpp;
 extern crate jid;
 extern crate minidom;
 extern crate xmpp_parsers;
+extern crate try_from;
 
 use std::env::args;
 use std::process::exit;
-use std::convert::TryFrom;
+use try_from::TryFrom;
 use tokio_core::reactor::Core;
 use futures::{Future, Stream, Sink, future};
 use tokio_xmpp::Client;
