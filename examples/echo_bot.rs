@@ -14,7 +14,7 @@ use futures::{Future, Stream, Sink, future};
 use tokio_xmpp::Client;
 use minidom::Element;
 use xmpp_parsers::presence::{Presence, Type as PresenceType, Show as PresenceShow};
-use xmpp_parsers::message::{Message, MessageType};
+use xmpp_parsers::message::{Message, MessageType, Body};
 use jid::Jid;
 
 fn main() {
@@ -60,7 +60,7 @@ fn main() {
             match (message.from, message.bodies.get("")) {
                 (Some(from), Some(body)) =>
                     if message.type_ != MessageType::Error {
-                        let reply = make_reply(from, body);
+                        let reply = make_reply(from, &body.0);
                         send(reply);
                     },
                 _ => (),
@@ -91,6 +91,6 @@ fn make_presence() -> Element {
 // Construct a chat <message/>
 fn make_reply(to: Jid, body: &str) -> Element {
     let mut message = Message::new(Some(to));
-    message.bodies.insert(String::new(), body.to_owned());
+    message.bodies.insert(String::new(), Body(body.to_owned()));
     message.into()
 }

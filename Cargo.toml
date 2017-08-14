@@ -15,7 +15,7 @@ native-tls = "*"
 tokio-tls = "*"
 sasl = "*"
 rustc-serialize = "*"
-jid = "*"
+jid = { version = "0.2.3", features = ["minidom"] }
 domain = "0.2.1"
 xmpp-parsers = "0.7.0"
 idna = "*"
