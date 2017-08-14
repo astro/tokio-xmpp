@@ -106,8 +106,7 @@ impl<S: AsyncRead + AsyncWrite> Future for ClientAuth<S> {
             ClientAuthState::WaitRecv(mut stream) =>
                 match stream.poll() {
                     Ok(Async::Ready(Some(Packet::Stanza(ref stanza))))
-                        if stanza.name() == "challenge"
-                        && stanza.ns() == Some(NS_XMPP_SASL) =>
+                        if stanza.is("challenge", NS_XMPP_SASL) =>
                     {
                         let content = try!(
                             stanza.text()
@@ -119,16 +118,14 @@ impl<S: AsyncRead + AsyncWrite> Future for ClientAuth<S> {
                         self.poll()
                     },
                     Ok(Async::Ready(Some(Packet::Stanza(ref stanza))))
-                        if stanza.name() == "success"
-                        && stanza.ns() == Some(NS_XMPP_SASL) =>
+                        if stanza.is("success", NS_XMPP_SASL) =>
                     {
                         let start = stream.restart();
                         self.state = ClientAuthState::Start(start);
                         self.poll()
                     },
                     Ok(Async::Ready(Some(Packet::Stanza(ref stanza))))
-                        if stanza.name() == "failure"
-                        && stanza.ns() == Some(NS_XMPP_SASL) =>
+                        if stanza.is("failure", NS_XMPP_SASL) =>
                     {
                         let e = stanza.children().next()
                             .map(|child| child.name())

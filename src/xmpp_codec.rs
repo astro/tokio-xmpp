@@ -9,7 +9,7 @@ use std::io::{Error, ErrorKind};
 use std::collections::HashMap;
 use std::collections::vec_deque::VecDeque;
 use tokio_io::codec::{Encoder, Decoder};
-use minidom::{Element, Node};
+use minidom::Element;
 use xml5ever::tokenizer::{XmlTokenizer, TokenSink, Token, Tag, TagKind};
 use xml5ever::interface::Attribute;
 use bytes::{BytesMut, BufMut};
@@ -278,8 +278,7 @@ impl Encoder for XMPPCodec {
                     .map_err(|e| Error::new(ErrorKind::InvalidInput, e))
             },
             Packet::Stanza(stanza) => {
-                let root_ns = self.ns.as_ref().map(|s| s.as_ref());
-                write_element(&stanza, dst, root_ns)
+                stanza.write_to_inner(&mut WriteBytes::new(dst))
                     .and_then(|_| {
                         println!(">> {:?}", dst);
                         Ok(())
@@ -301,42 +300,7 @@ impl Encoder for XMPPCodec {
 }
 
 pub fn write_text<W: Write>(text: &str, writer: &mut W) -> Result<(), std::fmt::Error> {
-    write!(writer, "{}", text)
-}
-
-// TODO: escape everything?
-pub fn write_element<W: Write>(el: &Element, writer: &mut W, parent_ns: Option<&str>) -> Result<(), std::fmt::Error> {
-    write!(writer, "<")?;
-    write!(writer, "{}", el.name())?;
-
-    if let Some(ns) = el.ns() {
-        if parent_ns.map(|s| s.as_ref()) != el.ns() {
-            write!(writer, " xmlns=\"{}\"", ns)?;
-        }
-    }
-
-    for (key, value) in el.attrs() {
-        write!(writer, " {}=\"{}\"", key, value)?;
-    }
-
-    if ! el.nodes().any(|_| true) {
-        write!(writer, " />")?;
-        return Ok(())
-    }
-
-    write!(writer, ">")?;
-
-    for node in el.nodes() {
-        match *node {
-            Node::Element(ref child) =>
-                write_element(child, writer, el.ns())?,
-            Node::Text(ref text) =>
-                write_text(text, writer)?,
-        }
-    }
-
-    write!(writer, "</{}>", el.name())?;
-    Ok(())
+    write!(writer, "{}", escape(text))
 }
 
 /// Copied from `RustyXML` for now
@@ -355,6 +319,31 @@ pub fn escape(input: &str) -> String {
     }
     result
 }
+
+/// BytesMut impl only std::fmt::Write but not std::io::Write. The
+/// latter trait is required for minidom's
+/// `Element::write_to_inner()`.
+struct WriteBytes<'a> {
+    dst: &'a mut BytesMut,
+}
+
+impl<'a> WriteBytes<'a> {
+    fn new(dst: &'a mut BytesMut) -> Self {
+        WriteBytes { dst }
+    }
+}
+
+impl<'a> std::io::Write for WriteBytes<'a> {
+    fn write(&mut self, buf: &[u8]) -> std::result::Result<usize, std::io::Error> {
+        self.dst.put_slice(buf);
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::result::Result<(), std::io::Error> {
+        Ok(())
+    }
+}
+
 
 #[cfg(test)]
 mod tests {

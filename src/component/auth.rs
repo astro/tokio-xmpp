@@ -71,8 +71,7 @@ impl<S: AsyncRead + AsyncWrite> Future for ComponentAuth<S> {
             ComponentAuthState::WaitRecv(mut stream) =>
                 match stream.poll() {
                     Ok(Async::Ready(Some(Packet::Stanza(ref stanza))))
-                        if stanza.name() == "handshake"
-                        && stanza.ns() == Some(NS_JABBER_COMPONENT_ACCEPT) =>
+                        if stanza.is("handshake", NS_JABBER_COMPONENT_ACCEPT) =>
                     {
                         self.state = ComponentAuthState::Invalid;
                         Ok(Async::Ready(stream))
