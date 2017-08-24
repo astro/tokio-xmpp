@@ -92,6 +92,15 @@ impl Stream for Component {
                 }
             },
             ComponentState::Connected(mut stream) => {
+                // Poll sink
+                match stream.poll_complete() {
+                    Ok(Async::NotReady) => (),
+                    Ok(Async::Ready(())) => (),
+                    Err(e) =>
+                        return Err(e.description().to_owned()),
+                };
+
+                // Poll stream
                 match stream.poll() {
                     Ok(Async::NotReady) => {
                         self.state = ComponentState::Connected(stream);

@@ -137,6 +137,15 @@ impl Stream for Client {
                 }
             },
             ClientState::Connected(mut stream) => {
+                // Poll sink
+                match stream.poll_complete() {
+                    Ok(Async::NotReady) => (),
+                    Ok(Async::Ready(())) => (),
+                    Err(e) =>
+                        return Err(e.description().to_owned()),
+                };
+
+                // Poll stream
                 match stream.poll() {
                     Ok(Async::Ready(None)) => {
                         // EOF

@@ -11,7 +11,7 @@ use std::process::exit;
 use std::str::FromStr;
 use try_from::TryFrom;
 use tokio_core::reactor::Core;
-use futures::{Future, Stream, Sink, future};
+use futures::{Stream, Sink, future};
 use tokio_xmpp::Component;
 use minidom::Element;
 use xmpp_parsers::presence::{Presence, Type as PresenceType, Show as PresenceShow};
@@ -38,18 +38,11 @@ fn main() {
     // Make the two interfaces for sending and receiving independent
     // of each other so we can move one into a closure.
     println!("Got it: {}", component.jid);
-    let (sink, stream) = component.split();
+    let (mut sink, stream) = component.split();
     // Wrap sink in Option so that we can take() it for the send(self)
     // to consume and return it back when ready.
-    let mut sink = Some(sink);
     let mut send = move |stanza| {
-        sink = Some(
-            sink.take().
-                expect("sink")
-                .send(stanza)
-                .wait()
-                .expect("sink.send")
-        );
+        sink.start_send(stanza).expect("start_send");
     };
     // Main loop, processes events
     let done = stream.for_each(|event| {
