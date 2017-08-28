@@ -15,7 +15,7 @@ pub fn generate_id(len: usize) -> String {
 
 /// An `FnOnce` callback would give more freedom to users Check back
 /// at a later Rust version.
-type Callback = FnMut(Result<Element, Element>) -> Box<Future<Item = (), Error = String>>;
+type Callback = FnMut(Result<&Element, &Element>) -> Box<Future<Item = (), Error = String>>;
 
 // TODO: add identification by (from, id)
 pub struct Tracker {
@@ -37,8 +37,7 @@ impl Tracker {
         self.pending.insert(id, callback);
     }
 
-    // TODO: &Element
-    pub fn trigger(&mut self, stanza: Element) -> Box<Future<Item = bool, Error = String>> {
+    pub fn trigger(&mut self, stanza: &Element) -> Box<Future<Item = bool, Error = String>> {
         let arg = if stanza.name() == "iq" && stanza.attr("type") == Some("result") {
             Some(Ok(stanza))
         } else if stanza.name() == "iq" && stanza.attr("type") == Some("error") {
@@ -50,7 +49,7 @@ impl Tracker {
             |arg| {
                 let get_id = |stanza: &Element| stanza.attr("id").map(|id| id.to_owned());
                 let id: Option<String> =
-                    arg.as_ref()
+                    arg
                     .map(&get_id)
                     .unwrap_or_else(&get_id);
                 id.and_then(
@@ -95,7 +94,7 @@ mod tests {
             .attr("id", "abc")
             .attr("type", "result")
             .build();
-        assert_eq!(tracker.trigger(iq).wait(), Ok(true));
+        assert_eq!(tracker.trigger(&iq).wait(), Ok(true));
         // TODO: verify result
     }
 
@@ -108,6 +107,6 @@ mod tests {
             .attr("id", "xyz")
             .attr("type", "result")
             .build();
-        assert_eq!(tracker.trigger(iq).wait(), Ok(false));
+        assert_eq!(tracker.trigger(&iq).wait(), Ok(false));
     }
 }
