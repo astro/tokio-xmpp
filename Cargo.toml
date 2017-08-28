@@ -17,7 +17,7 @@ sasl = "*"
 rustc-serialize = "*"
 jid = { version = "0.3.0", features = ["minidom"] }
 domain = "0.2.1"
-xmpp-parsers = "0.7.2"
+xmpp-parsers = "0.8.0"
 idna = "*"
 try_from = "0.2.2"
 sha-1 = "0.4.1"
