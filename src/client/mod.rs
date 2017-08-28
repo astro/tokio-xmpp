@@ -21,6 +21,7 @@ mod auth;
 use self::auth::ClientAuth;
 mod bind;
 use self::bind::ClientBind;
+mod iq;
 
 pub struct Client {
     pub jid: Jid,

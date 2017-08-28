@@ -13,6 +13,7 @@ extern crate jid;
 extern crate domain;
 extern crate idna;
 extern crate sha_1;
+extern crate rand;
 
 pub mod xmpp_codec;
 pub mod xmpp_stream;
