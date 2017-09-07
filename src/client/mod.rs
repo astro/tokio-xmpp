@@ -1,6 +1,7 @@
 use std::mem::replace;
 use std::str::FromStr;
 use std::error::Error;
+use std::collections::VecDeque;
 use tokio_core::reactor::Handle;
 use tokio_core::net::TcpStream;
 use tokio_io::{AsyncRead, AsyncWrite};
@@ -26,6 +27,7 @@ mod iq;
 pub struct Client {
     pub jid: Jid,
     state: ClientState,
+    write_queue: VecDeque<Element>,
     iq_tracker: iq::Tracker,
 }
 
@@ -47,6 +49,7 @@ impl Client {
         Ok(Client {
             jid,
             state: ClientState::Connecting(connect),
+            write_queue: VecDeque::new(),
             iq_tracker: iq::Tracker::new(),
         })
     }
@@ -112,19 +115,19 @@ impl Client {
         ClientBind::new(stream)
     }
 
-    pub fn iq(&mut self, stanza: Element) -> Box<Future<Item=Element, Error=Option<Element>>> {
-        match self.state {
-            ClientState::Connected(ref stream) => {
-                // TODO: generate id?
-                let future = self.iq_tracker.insert(&stanza);
-                // TODO: send queue
-                Box::new(future)
-            },
-            // Disconnected
-            _ => {
-                Box::new(future::err(None))
-            },
+    pub fn write(&mut self, stanza: Element) {
+        self.write_queue.push_back(stanza);
+    }
+
+    pub fn iq(&mut self, mut stanza: Element) -> iq::IqFuture {
+        // generate `id` if missing or duplicate
+        while stanza.attr("id").is_none() || self.iq_tracker.has(&stanza) {
+            stanza.set_attr("id", iq::generate_id(6));
         }
+
+        let future = self.iq_tracker.insert(&stanza);
+        self.write(stanza);
+        future
     }
 }
 
@@ -158,7 +161,20 @@ impl Stream for Client {
                 // Poll sink
                 match stream.poll_complete() {
                     Ok(Async::NotReady) => (),
-                    Ok(Async::Ready(())) => (),
+                    Ok(Async::Ready(())) =>
+                        match self.write_queue.pop_front() {
+                            None => (),
+                            Some(element) =>
+                                match stream.start_send(Packet::Stanza(element)) {
+                                    Ok(AsyncSink::Ready) => (),
+                                    Err(e) =>
+                                        return Err(e.description().to_owned()),
+                                    Ok(AsyncSink::NotReady(Packet::Stanza(element))) =>
+                                        self.write_queue.push_front(element),
+                                    Ok(AsyncSink::NotReady(_)) =>
+                                        unreachable!(),
+                                },
+                        },
                     Err(e) =>
                         return Err(e.description().to_owned()),
                 };
