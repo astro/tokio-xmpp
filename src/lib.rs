@@ -3,7 +3,6 @@ extern crate tokio_core;
 extern crate tokio_io;
 extern crate bytes;
 extern crate xml5ever;
-extern crate tendril;
 extern crate minidom;
 extern crate native_tls;
 extern crate tokio_tls;
