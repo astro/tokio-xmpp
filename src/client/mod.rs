@@ -26,6 +26,7 @@ mod iq;
 pub struct Client {
     pub jid: Jid,
     state: ClientState,
+    iq_tracker: iq::Tracker,
 }
 
 type XMPPStream = xmpp_stream::XMPPStream<TlsStream<TcpStream>>;
@@ -46,6 +47,7 @@ impl Client {
         Ok(Client {
             jid,
             state: ClientState::Connecting(connect),
+            iq_tracker: iq::Tracker::new(),
         })
     }
 
@@ -108,6 +110,21 @@ impl Client {
 
     fn bind<S: AsyncWrite>(stream: xmpp_stream::XMPPStream<S>) -> ClientBind<S> {
         ClientBind::new(stream)
+    }
+
+    pub fn iq(&mut self, stanza: Element) -> Box<Future<Item=Element, Error=Option<Element>>> {
+        match self.state {
+            ClientState::Connected(ref stream) => {
+                // TODO: generate id?
+                let future = self.iq_tracker.insert(&stanza);
+                // TODO: send queue
+                Box::new(future)
+            },
+            // Disconnected
+            _ => {
+                Box::new(future::err(None))
+            },
+        }
     }
 }
 
