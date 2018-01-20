@@ -188,6 +188,7 @@ impl Stream for Client {
                     },
                     Ok(Async::Ready(Some(Packet::Stanza(stanza)))) => {
                         self.state = ClientState::Connected(stream);
+                        // TODO: iq
                         Ok(Async::Ready(Some(Event::Stanza(stanza))))
                     },
                     Ok(Async::NotReady) |
@@ -199,40 +200,6 @@ impl Stream for Client {
                         Err(e.description().to_owned()),
                 }
             },
-        }
-    }
-}
-
-impl Sink for Client {
-    type SinkItem = Element;
-    type SinkError = String;
-
-    fn start_send(&mut self, item: Self::SinkItem) -> StartSend<Self::SinkItem, Self::SinkError> {
-        match self.state {
-            ClientState::Connected(ref mut stream) =>
-                match stream.start_send(Packet::Stanza(item)) {
-                    Ok(AsyncSink::NotReady(Packet::Stanza(stanza))) =>
-                        Ok(AsyncSink::NotReady(stanza)),
-                    Ok(AsyncSink::NotReady(_)) =>
-                        panic!("Client.start_send with stanza but got something else back"),
-                    Ok(AsyncSink::Ready) => {
-                        Ok(AsyncSink::Ready)
-                    },
-                    Err(e) =>
-                        Err(e.description().to_owned()),
-                },
-            _ =>
-                Ok(AsyncSink::NotReady(item)),
-        }
-    }
-
-    fn poll_complete(&mut self) -> Poll<(), Self::SinkError> {
-        match self.state {
-            ClientState::Connected(ref mut stream) =>
-                stream.poll_complete()
-                .map_err(|e| e.description().to_owned()),
-            _ =>
-                Ok(Async::Ready(())),
         }
     }
 }

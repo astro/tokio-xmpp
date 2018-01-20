@@ -29,23 +29,15 @@ fn main() {
     // tokio_core context
     let mut core = Core::new().unwrap();
     // Client instance
-    let client = Client::new(jid, password, core.handle()).unwrap();
+    let mut client = Client::new(jid, password, core.handle()).unwrap();
 
-    // Make the two interfaces for sending and receiving independent
-    // of each other so we can move one into a closure.
-    let (mut sink, stream) = client.split();
-    // Wrap sink in Option so that we can take() it for the send(self)
-    // to consume and return it back when ready.
-    let mut send = move |stanza| {
-        sink.start_send(stanza).expect("start_send");
-    };
     // Main loop, processes events
-    let done = stream.for_each(|event| {
+    let done = client.for_each(|event| {
         if event.is_online() {
             println!("Online!");
 
             let presence = make_presence();
-            send(presence);
+            client.write(presence);
         } else if let Some(message) = event.into_stanza()
             .and_then(|stanza| Message::try_from(stanza).ok())
         {
@@ -54,7 +46,7 @@ fn main() {
                 (Some(from), Some(body)) =>
                     if message.type_ != MessageType::Error {
                         let reply = make_reply(from, &body.0);
-                        send(reply);
+                        client.write(reply);
                     },
                 _ => (),
             }
