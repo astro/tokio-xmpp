@@ -45,7 +45,7 @@ impl Future for Connecter {
     type Error = String;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        match self.lookup.as_mut().map(|mut lookup| lookup.poll()) {
+        match self.lookup.as_mut().map(|lookup| lookup.poll()) {
             None | Some(Ok(Async::NotReady)) => (),
             Some(Ok(Async::Ready(found_srvs))) => {
                 self.lookup = None;
@@ -60,7 +60,7 @@ impl Future for Connecter {
                 return Err(format!("{}", e)),
         }
 
-        match self.srvs.as_mut().map(|mut srv| srv.poll()) {
+        match self.srvs.as_mut().map(|srv| srv.poll()) {
             None | Some(Ok(Async::NotReady)) => (),
             Some(Ok(Async::Ready(None))) =>
                 self.srvs = None,
