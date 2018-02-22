@@ -4,6 +4,7 @@ extern crate tokio_io;
 extern crate bytes;
 extern crate xml5ever;
 extern crate tendril;
+extern crate quick_xml;
 extern crate minidom;
 extern crate native_tls;
 extern crate tokio_tls;
@@ -12,7 +13,7 @@ extern crate rustc_serialize as serialize;
 extern crate jid;
 extern crate domain;
 extern crate idna;
-extern crate sha_1;
+extern crate sha1;
 
 pub mod xmpp_codec;
 pub mod xmpp_stream;

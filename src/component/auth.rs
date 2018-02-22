@@ -2,7 +2,7 @@ use std::mem::replace;
 use futures::{Future, Poll, Async, sink, Sink, Stream};
 use tokio_io::{AsyncRead, AsyncWrite};
 use minidom::Element;
-use sha_1::{Sha1, Digest};
+use sha1::{Sha1, Digest};
 
 use xmpp_codec::Packet;
 use xmpp_stream::XMPPStream;

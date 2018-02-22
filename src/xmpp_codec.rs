@@ -13,6 +13,7 @@ use minidom::Element;
 use xml5ever::tokenizer::{XmlTokenizer, TokenSink, Token, Tag, TagKind};
 use xml5ever::interface::Attribute;
 use bytes::{BytesMut, BufMut};
+use quick_xml::writer::Writer as EventWriter;
 
 // const NS_XMLNS: &'static str = "http://www.w3.org/2000/xmlns/";
 
@@ -278,7 +279,7 @@ impl Encoder for XMPPCodec {
                     .map_err(|e| Error::new(ErrorKind::InvalidInput, e))
             },
             Packet::Stanza(stanza) => {
-                stanza.write_to_inner(&mut WriteBytes::new(dst))
+                stanza.write_to_inner(&mut EventWriter::new(WriteBytes::new(dst)))
                     .and_then(|_| {
                         println!(">> {:?}", dst);
                         Ok(())
