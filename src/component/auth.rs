@@ -2,7 +2,7 @@ use std::mem::replace;
 use futures::{Future, Poll, Async, sink, Sink, Stream};
 use tokio_io::{AsyncRead, AsyncWrite};
 use minidom::Element;
-use sha1::{Sha1, Digest};
+use xmpp_parsers::component::Handshake;
 
 use xmpp_codec::Packet;
 use xmpp_stream::XMPPStream;
@@ -28,19 +28,13 @@ impl<S: AsyncWrite> ComponentAuth<S> {
         };
         this.send(
             stream,
-            "handshake",
-            // TODO: sha1(sid + password)
-            &format!("{:x}", Sha1::digest((sid + &password).as_bytes()))
+            Handshake::from_password_and_stream_id(&password, &sid)
         );
         return Ok(this);
     }
 
-    fn send(&mut self, stream: XMPPStream<S>, nonza_name: &str, handshake: &str) {
-        let nonza = Element::builder(nonza_name)
-            .ns(NS_JABBER_COMPONENT_ACCEPT)
-            .append(handshake)
-            .build();
-
+    fn send(&mut self, stream: XMPPStream<S>, handshake: Handshake) {
+        let nonza = Element::from(handshake);
         let send = stream.send(Packet::Stanza(nonza));
 
         self.state = ComponentAuthState::WaitSend(send);
