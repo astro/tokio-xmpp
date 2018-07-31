@@ -2,7 +2,7 @@ use std::mem::replace;
 use std::io::{Error, ErrorKind};
 use futures::{Future, Async, Poll, Stream, sink, Sink};
 use tokio_io::{AsyncRead, AsyncWrite};
-use tokio_io::codec::Framed;
+use tokio_codec::Framed;
 use jid::Jid;
 use minidom::Element;
 

@@ -7,6 +7,7 @@ authors = ["Astro <astro@spaceboyz.net>"]
 futures = "^0.1"
 tokio-core = "^0.1"
 tokio-io = "^0.1"
+tokio-codec = "^0.1"
 bytes = "0.4.9"
 xml5ever = "*"
 tendril = "*"

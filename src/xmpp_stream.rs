@@ -1,6 +1,6 @@
 use futures::{Poll, Stream, Sink, StartSend};
 use tokio_io::{AsyncRead, AsyncWrite};
-use tokio_io::codec::Framed;
+use tokio_codec::Framed;
 use minidom::Element;
 use jid::Jid;
 
@@ -25,7 +25,7 @@ impl<S: AsyncRead + AsyncWrite> XMPPStream<S> {
     }
 
     pub fn start(stream: S, jid: Jid, ns: String) -> StreamStart<S> {
-        let xmpp_stream = AsyncRead::framed(stream, XMPPCodec::new());
+        let xmpp_stream = Framed::new(stream, XMPPCodec::new());
         StreamStart::from_stream(xmpp_stream, jid, ns)
     }
 

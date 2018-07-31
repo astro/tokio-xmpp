@@ -1,6 +1,7 @@
 extern crate futures;
 extern crate tokio_core;
 extern crate tokio_io;
+extern crate tokio_codec;
 extern crate bytes;
 extern crate xml5ever;
 extern crate tendril;

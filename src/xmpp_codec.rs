@@ -8,7 +8,7 @@ use std::str::from_utf8;
 use std::io::{Error, ErrorKind};
 use std::collections::HashMap;
 use std::collections::vec_deque::VecDeque;
-use tokio_io::codec::{Encoder, Decoder};
+use tokio_codec::{Encoder, Decoder};
 use minidom::Element;
 use xml5ever::tokenizer::{XmlTokenizer, TokenSink, Token, Tag, TagKind};
 use xml5ever::interface::Attribute;
@@ -430,7 +430,7 @@ mod tests {
     fn test_large_stanza() {
         use std::io::Cursor;
         use futures::{Future, Sink};
-        use tokio_io::codec::FramedWrite;
+        use tokio_codec::FramedWrite;
         let framed = FramedWrite::new(Cursor::new(vec![]), XMPPCodec::new());
         let mut text = "".to_owned();
         for _ in 0..2usize.pow(15) {
