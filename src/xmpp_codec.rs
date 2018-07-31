@@ -13,7 +13,7 @@ use minidom::Element;
 use xml5ever::tokenizer::{XmlTokenizer, TokenSink, Token, Tag, TagKind};
 use xml5ever::interface::Attribute;
 use bytes::{BytesMut, BufMut};
-use quick_xml::writer::Writer as EventWriter;
+use quick_xml::Writer as EventWriter;
 
 // const NS_XMLNS: &'static str = "http://www.w3.org/2000/xmlns/";
 

@@ -4,20 +4,22 @@ version = "0.1.0"
 authors = ["Astro <astro@spaceboyz.net>"]
 
 [dependencies]
-futures = "*"
-tokio-core = "0.1.7"
-tokio-io = "*"
-bytes = "0.4.4"
+futures = "^0.1"
+tokio-core = "^0.1"
+tokio-io = "^0.1"
+bytes = "0.4.9"
 xml5ever = "*"
 tendril = "*"
-minidom = "0.8.0"
-native-tls = "*"
+minidom = "0.9.1"
+# TODO: update to 0.2.0
+native-tls = "0.1"
 tokio-tls = "*"
 sasl = "*"
 rustc-serialize = "*"
-jid = { version = "0.5.0", features = ["minidom"] }
+jid = { version = "0.5.2", features = ["minidom"] }
+#jid = { version = "0.5.0", features = ["minidom"] }
 domain = "0.2.1"
-xmpp-parsers = "0.10.0"
+xmpp-parsers = "0.10"
 idna = "*"
 try_from = "0.2.2"
 sha-1 = "0.7.0"
