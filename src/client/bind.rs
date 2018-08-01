@@ -1,11 +1,10 @@
 use std::mem::replace;
 use std::error::Error;
-use std::str::FromStr;
-use futures::{Future, Poll, Async, sink, Sink, Stream};
+use futures::{Future, Poll, Async, sink, Stream};
 use tokio_io::{AsyncRead, AsyncWrite};
-use jid::Jid;
-use minidom::Element;
+use xmpp_parsers::iq::{Iq, IqType};
 use xmpp_parsers::bind::Bind;
+use try_from::TryFrom;
 
 use xmpp_codec::Packet;
 use xmpp_stream::XMPPStream;
@@ -32,7 +31,8 @@ impl<S: AsyncWrite> ClientBind<S> {
                 ClientBind::Unsupported(stream),
             Some(_) => {
                 let resource = stream.jid.resource.clone();
-                let iq = Bind::new(resource);
+                let iq = Iq::from_set(Bind::new(resource))
+                    .with_id(BIND_REQ_ID.to_string());
                 let send = stream.send_stanza(iq);
                 ClientBind::WaitSend(send)
             },
@@ -66,18 +66,26 @@ impl<S: AsyncRead + AsyncWrite> Future for ClientBind<S> {
             },
             ClientBind::WaitRecv(mut stream) => {
                 match stream.poll() {
-                    Ok(Async::Ready(Some(Packet::Stanza(ref iq))))
-                        if iq.name() == "iq"
-                        && iq.attr("id") == Some(BIND_REQ_ID) => {
-                            match iq.attr("type") {
-                                Some("result") => {
-                                    get_bind_response_jid(iq)
-                                        .map(|jid| stream.jid = jid);
-                                    Ok(Async::Ready(stream))
-                                },
-                                _ =>
-                                    Err("resource bind response".to_owned()),
-                            }
+                    Ok(Async::Ready(Some(Packet::Stanza(stanza)))) =>
+                        match Iq::try_from(stanza) {
+                            Ok(iq) => if iq.id == Some(BIND_REQ_ID.to_string()) {
+                                match iq.payload {
+                                    IqType::Result(payload) => {
+                                        payload
+                                            .and_then(|payload| Bind::try_from(payload).ok())
+                                            .map(|bind| match bind {
+                                                Bind::Jid(jid) => stream.jid = jid,
+                                                _ => {}
+                                            });
+                                        Ok(Async::Ready(stream))
+                                    },
+                                    _ =>
+                                        Err("resource bind response".to_owned()),
+                                }
+                            } else {
+                                Ok(Async::NotReady)
+                            },
+                            _ => Ok(Async::NotReady),
                         },
                     Ok(Async::Ready(_)) => {
                         replace(self, ClientBind::WaitRecv(stream));
@@ -95,15 +103,4 @@ impl<S: AsyncRead + AsyncWrite> Future for ClientBind<S> {
                 unreachable!(),
         }
     }
-}
-
-fn get_bind_response_jid(iq: &Element) -> Option<Jid> {
-    iq.get_child("bind", NS_XMPP_BIND)
-        .and_then(|bind_el|
-                  bind_el.get_child("jid", NS_XMPP_BIND)
-        )
-        .and_then(|jid_el|
-                  Jid::from_str(&jid_el.text())
-                  .ok()
-        )
 }

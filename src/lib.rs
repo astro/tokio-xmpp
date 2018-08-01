@@ -15,6 +15,7 @@ extern crate jid;
 extern crate domain;
 extern crate idna;
 extern crate xmpp_parsers;
+extern crate try_from;
 
 pub mod xmpp_codec;
 pub mod xmpp_stream;

@@ -1,12 +1,12 @@
 use std::mem::replace;
-use futures::{Future, Poll, Async, sink, Sink, Stream};
+use futures::{Future, Poll, Async, sink, Stream};
 use tokio_io::{AsyncRead, AsyncWrite};
-use minidom::Element;
 use sasl::common::Credentials;
 use sasl::common::scram::{Sha1, Sha256};
 use sasl::client::Mechanism;
 use sasl::client::mechanisms::{Scram, Plain, Anonymous};
 use serialize::base64::{self, ToBase64, FromBase64};
+use minidom::Element;
 
 use xmpp_codec::Packet;
 use xmpp_stream::XMPPStream;

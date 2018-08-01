@@ -1,7 +1,6 @@
 use std::mem::replace;
-use futures::{Future, Poll, Async, sink, Sink, Stream};
+use futures::{Future, Poll, Async, sink, Stream};
 use tokio_io::{AsyncRead, AsyncWrite};
-use minidom::Element;
 use xmpp_parsers::component::Handshake;
 
 use xmpp_codec::Packet;
