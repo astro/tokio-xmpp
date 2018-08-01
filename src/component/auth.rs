@@ -34,8 +34,8 @@ impl<S: AsyncWrite> ComponentAuth<S> {
     }
 
     fn send(&mut self, stream: XMPPStream<S>, handshake: Handshake) {
-        let nonza = Element::from(handshake);
-        let send = stream.send(Packet::Stanza(nonza));
+        let nonza = handshake;
+        let send = stream.send_stanza(nonza);
 
         self.state = ComponentAuthState::WaitSend(send);
     }

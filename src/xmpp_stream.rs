@@ -1,10 +1,11 @@
 use futures::{Poll, Stream, Sink, StartSend};
+use futures::sink::Send;
 use tokio_io::{AsyncRead, AsyncWrite};
 use tokio_codec::Framed;
 use minidom::Element;
 use jid::Jid;
 
-use xmpp_codec::XMPPCodec;
+use xmpp_codec::{XMPPCodec, Packet};
 use stream_start::StreamStart;
 
 pub const NS_XMPP_STREAM: &str = "http://etherx.jabber.org/streams";
@@ -35,6 +36,13 @@ impl<S: AsyncRead + AsyncWrite> XMPPStream<S> {
 
     pub fn restart(self) -> StreamStart<S> {
         Self::start(self.stream.into_inner(), self.jid, self.ns)
+    }
+}
+
+impl<S: AsyncWrite> XMPPStream<S> {
+    /// Convenience method
+    pub fn send_stanza<E: Into<Element>>(self, e: E) -> Send<Self> {
+        self.send(Packet::Stanza(e.into()))
     }
 }
 

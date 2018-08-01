@@ -76,7 +76,7 @@ impl<S: AsyncWrite> ClientAuth<S> {
             .append(content.to_base64(base64::STANDARD))
             .build();
 
-        let send = stream.send(Packet::Stanza(nonza));
+        let send = stream.send_stanza(nonza);
 
         self.state = ClientAuthState::WaitSend(send);
     }

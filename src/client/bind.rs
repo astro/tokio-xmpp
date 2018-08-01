@@ -32,10 +32,8 @@ impl<S: AsyncWrite> ClientBind<S> {
                 ClientBind::Unsupported(stream),
             Some(_) => {
                 let resource = stream.jid.resource.clone();
-                let iq = Element::from(
-                    Bind::new(resource)
-                );
-                let send = stream.send(Packet::Stanza(iq));
+                let iq = Bind::new(resource);
+                let send = stream.send_stanza(iq);
                 ClientBind::WaitSend(send)
             },
         }
