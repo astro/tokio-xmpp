@@ -5,6 +5,7 @@ use futures::{Future, Poll, Async, sink, Sink, Stream};
 use tokio_io::{AsyncRead, AsyncWrite};
 use jid::Jid;
 use minidom::Element;
+use xmpp_parsers::bind::Bind;
 
 use xmpp_codec::Packet;
 use xmpp_stream::XMPPStream;
@@ -30,27 +31,15 @@ impl<S: AsyncWrite> ClientBind<S> {
                 // return the (probably // usable) stream immediately
                 ClientBind::Unsupported(stream),
             Some(_) => {
-                let iq = make_bind_request(stream.jid.resource.as_ref());
+                let resource = stream.jid.resource.clone();
+                let iq = Element::from(
+                    Bind::new(resource)
+                );
                 let send = stream.send(Packet::Stanza(iq));
                 ClientBind::WaitSend(send)
             },
         }
     }
-}
-
-fn make_bind_request(resource: Option<&String>) -> Element {
-    let iq = Element::builder("iq")
-        .attr("type", "set")
-        .attr("id", BIND_REQ_ID);
-    let mut bind_el = Element::builder("bind")
-        .ns(NS_XMPP_BIND);
-    if let Some(resource) = resource {
-        let resource_el = Element::builder("resource")
-            .append(resource);
-        bind_el = bind_el.append(resource_el.build());
-    }
-    iq.append(bind_el.build())
-        .build()
 }
 
 impl<S: AsyncRead + AsyncWrite> Future for ClientBind<S> {
