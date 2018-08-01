@@ -5,8 +5,9 @@ use sasl::common::Credentials;
 use sasl::common::scram::{Sha1, Sha256};
 use sasl::client::Mechanism;
 use sasl::client::mechanisms::{Scram, Plain, Anonymous};
-use serialize::base64::{self, ToBase64, FromBase64};
+use serialize::base64::FromBase64;
 use minidom::Element;
+use xmpp_parsers::sasl::{Auth, Response, Mechanism as XMPPMechanism};
 
 use xmpp_codec::Packet;
 use xmpp_stream::XMPPStream;
@@ -28,11 +29,19 @@ enum ClientAuthState<S: AsyncWrite> {
 
 impl<S: AsyncWrite> ClientAuth<S> {
     pub fn new(stream: XMPPStream<S>, creds: Credentials) -> Result<Self, String> {
-        let mechs: Vec<Box<Mechanism>> = vec![
-            Box::new(Scram::<Sha256>::from_credentials(creds.clone()).unwrap()),
-            Box::new(Scram::<Sha1>::from_credentials(creds.clone()).unwrap()),
-            Box::new(Plain::from_credentials(creds).unwrap()),
-            Box::new(Anonymous::new()),
+        let mechs: Vec<(Box<Mechanism>, XMPPMechanism)> = vec![
+            // (Box::new(Scram::<Sha256>::from_credentials(creds.clone()).unwrap()),
+            //  XMPPMechanism::ScramSha256
+            // ),
+            (Box::new(Scram::<Sha1>::from_credentials(creds.clone()).unwrap()),
+             XMPPMechanism::ScramSha1
+            ),
+            (Box::new(Plain::from_credentials(creds).unwrap()),
+             XMPPMechanism::Plain
+            ),
+            (Box::new(Anonymous::new()),
+             XMPPMechanism::Anonymous
+            ),
         ];
 
         let mech_names: Vec<String> =
@@ -47,7 +56,7 @@ impl<S: AsyncWrite> ClientAuth<S> {
             };
         println!("SASL mechanisms offered: {:?}", mech_names);
 
-        for mut mech in mechs {
+        for (mut mech, mechanism) in mechs {
             let name = mech.name().to_owned();
             if mech_names.iter().any(|name1| *name1 == name) {
                 println!("SASL mechanism selected: {:?}", name);
@@ -58,8 +67,10 @@ impl<S: AsyncWrite> ClientAuth<S> {
                 };
                 this.send(
                     stream,
-                    "auth", &[("mechanism", &name)],
-                    &initial
+                    Auth {
+                        mechanism,
+                        data: initial,
+                    }
                 );
                 return Ok(this);
             }
@@ -68,14 +79,7 @@ impl<S: AsyncWrite> ClientAuth<S> {
         Err("No supported SASL mechanism available".to_owned())
     }
 
-    fn send(&mut self, stream: XMPPStream<S>, nonza_name: &str, attrs: &[(&str, &str)], content: &[u8]) {
-        let nonza = Element::builder(nonza_name)
-            .ns(NS_XMPP_SASL);
-        let nonza = attrs.iter()
-            .fold(nonza, |nonza, &(name, value)| nonza.attr(name, value))
-            .append(content.to_base64(base64::STANDARD))
-            .build();
-
+    fn send<N: Into<Element>>(&mut self, stream: XMPPStream<S>, nonza: N) {
         let send = stream.send_stanza(nonza);
 
         self.state = ClientAuthState::WaitSend(send);
@@ -114,7 +118,7 @@ impl<S: AsyncRead + AsyncWrite> Future for ClientAuth<S> {
                                 .map_err(|e| format!("{}", e))
                         );
                         let response = try!(self.mechanism.response(&content));
-                        self.send(stream, "response", &[], &response);
+                        self.send(stream, Response { data: response });
                         self.poll()
                     },
                     Ok(Async::Ready(Some(Packet::Stanza(ref stanza))))
