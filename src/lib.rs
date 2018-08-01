@@ -14,7 +14,7 @@ extern crate rustc_serialize as serialize;
 extern crate jid;
 extern crate domain;
 extern crate idna;
-extern crate sha1;
+extern crate xmpp_parsers;
 
 pub mod xmpp_codec;
 pub mod xmpp_stream;
