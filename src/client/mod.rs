@@ -45,7 +45,7 @@ impl Client {
     /// Start polling the returned instance so that it will connect
     /// and yield events.
     pub fn new(jid: &str, password: &str, handle: Handle) -> Result<Self, JidParseError> {
-        let jid = try!(Jid::from_str(jid));
+        let jid = Jid::from_str(jid)?;
         let password = password.to_owned();
         let connect = Self::make_connect(jid.clone(), password.clone(), handle);
         Ok(Client {

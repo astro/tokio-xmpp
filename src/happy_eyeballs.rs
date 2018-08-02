@@ -18,14 +18,10 @@ pub struct Connecter {
 
 impl Connecter {
     pub fn from_lookup(handle: Handle, domain: &str, srv: &str, fallback_port: u16) -> Result<Connecter, String> {
-        let domain = try!(
-            DNameBuf::from_str(domain)
-                .map_err(|e| format!("{}", e))
-        );
-        let srv = try!(
-            DNameBuf::from_str(srv)
-                .map_err(|e| format!("{}", e))
-        );
+        let domain = DNameBuf::from_str(domain)
+            .map_err(|e| format!("{}", e))?;
+        let srv = DNameBuf::from_str(srv)
+            .map_err(|e| format!("{}", e))?;
 
         let resolver = Resolver::new(&handle);
         let lookup = lookup_srv(resolver.clone(), srv, domain, fallback_port);

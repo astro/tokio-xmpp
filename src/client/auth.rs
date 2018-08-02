@@ -60,7 +60,7 @@ impl<S: AsyncWrite> ClientAuth<S> {
             let name = mech.name().to_owned();
             if mech_names.iter().any(|name1| *name1 == name) {
                 println!("SASL mechanism selected: {:?}", name);
-                let initial = try!(mech.initial());
+                let initial = mech.initial()?;
                 let mut this = ClientAuth {
                     state: ClientAuthState::Invalid,
                     mechanism: mech,
@@ -111,7 +111,7 @@ impl<S: AsyncRead + AsyncWrite> Future for ClientAuth<S> {
                 match stream.poll() {
                     Ok(Async::Ready(Some(Packet::Stanza(stanza)))) => {
                         if let Ok(challenge) = Challenge::try_from(stanza.clone()) {
-                            let response = try!(self.mechanism.response(&challenge.data));
+                            let response = self.mechanism.response(&challenge.data)?;
                             self.send(stream, Response { data: response });
                             self.poll()
                         } else if let Ok(_) = Success::try_from(stanza.clone()) {
