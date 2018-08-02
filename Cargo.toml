@@ -15,7 +15,6 @@ tokio-io = "0.1"
 tokio-codec = "0.1"
 bytes = "0.4.9"
 xml5ever = "0.12"
-tendril = "0.4"
 minidom = "0.9"
 # TODO: update to 0.2.0
 native-tls = "0.1"

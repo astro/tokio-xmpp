@@ -4,7 +4,6 @@ extern crate tokio_io;
 extern crate tokio_codec;
 extern crate bytes;
 extern crate xml5ever;
-extern crate tendril;
 extern crate quick_xml;
 extern crate minidom;
 extern crate native_tls;
