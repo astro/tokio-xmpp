@@ -11,10 +11,11 @@ use jid::Jid;
 use xmpp_codec::Packet;
 use xmpp_stream::XMPPStream;
 
-
+/// XMPP TLS XML namespace
 pub const NS_XMPP_TLS: &str = "urn:ietf:params:xml:ns:xmpp-tls";
 
 
+/// XMPP stream that switches to TLS if available in received features
 pub struct StartTlsClient<S: AsyncRead + AsyncWrite> {
     state: StartTlsClientState<S>,
     jid: Jid,

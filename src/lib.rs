@@ -1,3 +1,7 @@
+#![deny(unsafe_code, unused, missing_docs)]
+
+//! XMPP implemeentation with asynchronous I/O using Tokio.
+
 extern crate futures;
 extern crate tokio_core;
 extern crate tokio_io;

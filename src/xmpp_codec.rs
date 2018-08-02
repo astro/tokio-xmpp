@@ -1,3 +1,5 @@
+//! XML stream parser for XMPP
+
 use std;
 use std::default::Default;
 use std::iter::FromIterator;
@@ -15,17 +17,22 @@ use xml5ever::interface::Attribute;
 use bytes::{BytesMut, BufMut};
 use quick_xml::Writer as EventWriter;
 
-// const NS_XMLNS: &'static str = "http://www.w3.org/2000/xmlns/";
-
+/// Anything that can be sent or received on an XMPP/XML stream
 #[derive(Debug)]
 pub enum Packet {
+    /// General error (`InvalidInput`)
     Error(Box<std::error::Error>),
+    /// `<stream:stream>` start tag
     StreamStart(HashMap<String, String>),
+    /// A complete stanza or nonza
     Stanza(Element),
+    /// Plain text (think whitespace keep-alive)
     Text(String),
+    /// `</stream:stream>` closing tag
     StreamEnd,
 }
 
+/// Parser state
 struct ParserSink {
     // Ready stanzas, shared with XMPPCodec
     queue: Rc<RefCell<VecDeque<Packet>>>,
@@ -47,6 +54,7 @@ impl ParserSink {
         self.queue.borrow_mut().push_back(pkt);
     }
 
+    /// Lookup XML namespace declaration for given prefix (or no prefix)
     fn lookup_ns(&self, prefix: &Option<String>) -> Option<&str> {
         for nss in self.ns_stack.iter().rev() {
             if let Some(ns) = nss.get(prefix) {
@@ -166,6 +174,7 @@ impl TokenSink for ParserSink {
     // }
 }
 
+/// Stateful encoder/decoder for a bytestream from/to XMPP `Packet`
 pub struct XMPPCodec {
     /// Outgoing
     ns: Option<String>,
@@ -179,6 +188,7 @@ pub struct XMPPCodec {
 }
 
 impl XMPPCodec {
+    /// Constructor
     pub fn new() -> Self {
         let queue = Rc::new(RefCell::new(VecDeque::new()));
         let sink = ParserSink::new(queue.clone());
@@ -300,6 +310,7 @@ impl Encoder for XMPPCodec {
     }
 }
 
+/// Write XML-escaped text string
 pub fn write_text<W: Write>(text: &str, writer: &mut W) -> Result<(), std::fmt::Error> {
     write!(writer, "{}", escape(text))
 }

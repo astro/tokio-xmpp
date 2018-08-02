@@ -22,7 +22,9 @@ use self::auth::ClientAuth;
 mod bind;
 use self::bind::ClientBind;
 
+/// XMPP client connection and state
 pub struct Client {
+    /// The client's current Jabber-Id
     pub jid: Jid,
     state: ClientState,
 }
@@ -38,6 +40,10 @@ enum ClientState {
 }
 
 impl Client {
+    /// Start a new XMPP client
+    ///
+    /// Start polling the returned instance so that it will connect
+    /// and yield events.
     pub fn new(jid: &str, password: &str, handle: Handle) -> Result<Self, JidParseError> {
         let jid = try!(Jid::from_str(jid));
         let password = password.to_owned();

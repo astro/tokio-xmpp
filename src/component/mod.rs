@@ -1,3 +1,6 @@
+//! Components in XMPP are services/gateways that are logged into an
+//! XMPP server under a JID consisting of just a domain name. They are
+//! allowed to use any user and resource identifiers in their stanzas.
 use std::mem::replace;
 use std::str::FromStr;
 use std::error::Error;
@@ -16,7 +19,9 @@ use super::event::Event;
 mod auth;
 use self::auth::ComponentAuth;
 
+/// Component connection to an XMPP server
 pub struct Component {
+    /// The component's Jabber-Id
     pub jid: Jid,
     state: ComponentState,
 }
@@ -32,6 +37,10 @@ enum ComponentState {
 }
 
 impl Component {
+    /// Start a new XMPP component
+    ///
+    /// Start polling the returned instance so that it will connect
+    /// and yield events.
     pub fn new(jid: &str, password: &str, server: &str, port: u16, handle: Handle) -> Result<Self, JidParseError> {
         let jid = try!(Jid::from_str(jid));
         let password = password.to_owned();
