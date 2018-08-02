@@ -10,7 +10,6 @@ extern crate minidom;
 extern crate native_tls;
 extern crate tokio_tls;
 extern crate sasl;
-extern crate rustc_serialize as serialize;
 extern crate jid;
 extern crate domain;
 extern crate idna;

@@ -21,7 +21,6 @@ minidom = "0.9"
 native-tls = "0.1"
 tokio-tls = "0.1"
 sasl = "0.4"
-rustc-serialize = "0.3"
 jid = { version = "0.5", features = ["minidom"] }
 domain = "0.2"
 xmpp-parsers = "0.10"

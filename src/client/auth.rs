@@ -5,9 +5,9 @@ use sasl::common::Credentials;
 use sasl::common::scram::{Sha1, Sha256};
 use sasl::client::Mechanism;
 use sasl::client::mechanisms::{Scram, Plain, Anonymous};
-use serialize::base64::FromBase64;
 use minidom::Element;
-use xmpp_parsers::sasl::{Auth, Response, Mechanism as XMPPMechanism};
+use xmpp_parsers::sasl::{Auth, Challenge, Response, Success, Failure, Mechanism as XMPPMechanism};
+use try_from::TryFrom;
 
 use xmpp_codec::Packet;
 use xmpp_stream::XMPPStream;
@@ -30,9 +30,9 @@ enum ClientAuthState<S: AsyncWrite> {
 impl<S: AsyncWrite> ClientAuth<S> {
     pub fn new(stream: XMPPStream<S>, creds: Credentials) -> Result<Self, String> {
         let mechs: Vec<(Box<Mechanism>, XMPPMechanism)> = vec![
-            // (Box::new(Scram::<Sha256>::from_credentials(creds.clone()).unwrap()),
-            //  XMPPMechanism::ScramSha256
-            // ),
+            (Box::new(Scram::<Sha256>::from_credentials(creds.clone()).unwrap()),
+             XMPPMechanism::ScramSha256
+            ),
             (Box::new(Scram::<Sha1>::from_credentials(creds.clone()).unwrap()),
              XMPPMechanism::ScramSha1
             ),
@@ -109,33 +109,22 @@ impl<S: AsyncRead + AsyncWrite> Future for ClientAuth<S> {
                 },
             ClientAuthState::WaitRecv(mut stream) =>
                 match stream.poll() {
-                    Ok(Async::Ready(Some(Packet::Stanza(ref stanza))))
-                        if stanza.is("challenge", NS_XMPP_SASL) =>
-                    {
-                        let content = try!(
-                            stanza.text()
-                                .from_base64()
-                                .map_err(|e| format!("{}", e))
-                        );
-                        let response = try!(self.mechanism.response(&content));
-                        self.send(stream, Response { data: response });
-                        self.poll()
-                    },
-                    Ok(Async::Ready(Some(Packet::Stanza(ref stanza))))
-                        if stanza.is("success", NS_XMPP_SASL) =>
-                    {
-                        let start = stream.restart();
-                        self.state = ClientAuthState::Start(start);
-                        self.poll()
-                    },
-                    Ok(Async::Ready(Some(Packet::Stanza(ref stanza))))
-                        if stanza.is("failure", NS_XMPP_SASL) =>
-                    {
-                        let e = stanza.children().next()
-                            .map(|child| child.name())
-                            .unwrap_or("Authentication failure");
-                        Err(e.to_owned())
-                    },
+                    Ok(Async::Ready(Some(Packet::Stanza(stanza)))) => {
+                        if let Ok(challenge) = Challenge::try_from(stanza.clone()) {
+                            let response = try!(self.mechanism.response(&challenge.data));
+                            self.send(stream, Response { data: response });
+                            self.poll()
+                        } else if let Ok(_) = Success::try_from(stanza.clone()) {
+                            let start = stream.restart();
+                            self.state = ClientAuthState::Start(start);
+                            self.poll()
+                        } else if let Ok(failure) = Failure::try_from(stanza) {
+                            let e = failure.data;
+                            Err(e)
+                        } else {
+                            Ok(Async::NotReady)
+                        }
+                    }
                     Ok(Async::Ready(event)) => {
                         println!("ClientAuth ignore {:?}", event);
                         Ok(Async::NotReady)
