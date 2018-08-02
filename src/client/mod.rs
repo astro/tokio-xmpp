@@ -87,7 +87,7 @@ impl Client {
                 }).and_then(|xmpp_stream| {
                     Self::bind(xmpp_stream)
                 }).and_then(|xmpp_stream| {
-                    println!("Bound to {}", xmpp_stream.jid);
+                    // println!("Bound to {}", xmpp_stream.jid);
                     Ok(xmpp_stream)
                 })
         )

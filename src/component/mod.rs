@@ -63,7 +63,7 @@ impl Component {
                 }).and_then(move |xmpp_stream| {
                     Self::auth(xmpp_stream, password).expect("auth")
                 }).and_then(|xmpp_stream| {
-                    println!("Bound to {}", xmpp_stream.jid);
+                    // println!("Bound to {}", xmpp_stream.jid);
                     Ok(xmpp_stream)
                 })
         )

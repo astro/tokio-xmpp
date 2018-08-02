@@ -47,12 +47,12 @@ impl<S: AsyncWrite> ClientAuth<S> {
                     .map(|mech_el| mech_el.text())
                     .collect(),
             };
-        println!("SASL mechanisms offered: {:?}", mech_names);
+        // println!("SASL mechanisms offered: {:?}", mech_names);
 
         for mut mech in mechs {
             let name = mech.name().to_owned();
             if mech_names.iter().any(|name1| *name1 == name) {
-                println!("SASL mechanism selected: {:?}", name);
+                // println!("SASL mechanism selected: {:?}", name);
                 let initial = mech.initial()?;
                 let mut this = ClientAuth {
                     state: ClientAuthState::Invalid,
@@ -120,8 +120,8 @@ impl<S: AsyncRead + AsyncWrite> Future for ClientAuth<S> {
                             Ok(Async::NotReady)
                         }
                     }
-                    Ok(Async::Ready(event)) => {
-                        println!("ClientAuth ignore {:?}", event);
+                    Ok(Async::Ready(_event)) => {
+                        // println!("ClientAuth ignore {:?}", _event);
                         Ok(Async::NotReady)
                     },
                     Ok(_) => {

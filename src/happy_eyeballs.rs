@@ -65,7 +65,7 @@ impl Future for Connecter {
                 for addr in srv_item.to_socket_addrs() {
                     self.connects.entry(addr)
                         .or_insert_with(|| {
-                            println!("Connect to {}", addr);
+                            // println!("Connect to {}", addr);
                             TcpStream::connect(&addr, handle)
                         });
                 }
@@ -87,8 +87,8 @@ impl Future for Connecter {
                     connected_stream = Some(tcp_stream);
                     false
                 },
-                Err(e) => {
-                    println!("{}", e);
+                Err(_e) => {
+                    // println!("{}", _e);
                     false
                 },
             }

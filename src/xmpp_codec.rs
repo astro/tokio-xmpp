@@ -163,7 +163,7 @@ impl TokenSink for ParserSink {
             Token::EOFToken =>
                 self.push_queue(Packet::StreamEnd),
             Token::ParseError(s) => {
-                println!("ParseError: {:?}", s);
+                // println!("ParseError: {:?}", s);
                 self.push_queue(Packet::Error(Box::new(Error::new(ErrorKind::InvalidInput, (*s).to_owned()))))
             },
             _ => (),
@@ -226,7 +226,7 @@ impl Decoder for XMPPCodec {
         match from_utf8(buf1) {
             Ok(s) => {
                 if ! s.is_empty() {
-                    println!("<< {}", s);
+                    // println!("<< {}", s);
                     let tendril = FromIterator::from_iter(s.chars());
                     self.parser.feed(tendril);
                 }
@@ -246,7 +246,7 @@ impl Decoder for XMPPCodec {
                 return result;
             },
             Err(e) => {
-                println!("error {} at {}/{} in {:?}", e, e.valid_up_to(), buf1.len(), buf1);
+                // println!("error {} at {}/{} in {:?}", e, e.valid_up_to(), buf1.len(), buf1);
                 return Err(Error::new(ErrorKind::InvalidInput, e));
             },
         }
@@ -291,7 +291,7 @@ impl Encoder for XMPPCodec {
             Packet::Stanza(stanza) => {
                 stanza.write_to_inner(&mut EventWriter::new(WriteBytes::new(dst)))
                     .and_then(|_| {
-                        println!(">> {:?}", dst);
+                        // println!(">> {:?}", dst);
                         Ok(())
                     })
                     .map_err(|e| Error::new(ErrorKind::InvalidInput, format!("{}", e)))
@@ -299,7 +299,7 @@ impl Encoder for XMPPCodec {
             Packet::Text(text) => {
                 write_text(&text, dst)
                     .and_then(|_| {
-                        println!(">> {:?}", dst);
+                        // println!(">> {:?}", dst);
                         Ok(())
                     })
                     .map_err(|e| Error::new(ErrorKind::InvalidInput, format!("{}", e)))
