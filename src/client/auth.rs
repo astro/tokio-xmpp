@@ -1,4 +1,5 @@
 use std::mem::replace;
+use std::str::FromStr;
 use futures::{Future, Poll, Async, sink, Stream};
 use tokio_io::{AsyncRead, AsyncWrite};
 use sasl::common::Credentials;
@@ -29,19 +30,11 @@ enum ClientAuthState<S: AsyncWrite> {
 
 impl<S: AsyncWrite> ClientAuth<S> {
     pub fn new(stream: XMPPStream<S>, creds: Credentials) -> Result<Self, String> {
-        let mechs: Vec<(Box<Mechanism>, XMPPMechanism)> = vec![
-            (Box::new(Scram::<Sha256>::from_credentials(creds.clone()).unwrap()),
-             XMPPMechanism::ScramSha256
-            ),
-            (Box::new(Scram::<Sha1>::from_credentials(creds.clone()).unwrap()),
-             XMPPMechanism::ScramSha1
-            ),
-            (Box::new(Plain::from_credentials(creds).unwrap()),
-             XMPPMechanism::Plain
-            ),
-            (Box::new(Anonymous::new()),
-             XMPPMechanism::Anonymous
-            ),
+        let mechs: Vec<Box<Mechanism>> = vec![
+            Box::new(Scram::<Sha256>::from_credentials(creds.clone()).unwrap()),
+            Box::new(Scram::<Sha1>::from_credentials(creds.clone()).unwrap()),
+            Box::new(Plain::from_credentials(creds).unwrap()),
+            Box::new(Anonymous::new()),
         ];
 
         let mech_names: Vec<String> =
@@ -56,7 +49,7 @@ impl<S: AsyncWrite> ClientAuth<S> {
             };
         println!("SASL mechanisms offered: {:?}", mech_names);
 
-        for (mut mech, mechanism) in mechs {
+        for mut mech in mechs {
             let name = mech.name().to_owned();
             if mech_names.iter().any(|name1| *name1 == name) {
                 println!("SASL mechanism selected: {:?}", name);
@@ -65,6 +58,8 @@ impl<S: AsyncWrite> ClientAuth<S> {
                     state: ClientAuthState::Invalid,
                     mechanism: mech,
                 };
+                let mechanism = XMPPMechanism::from_str(&name)
+                    .map_err(|e| format!("{:?}", e))?;
                 this.send(
                     stream,
                     Auth {
@@ -119,7 +114,7 @@ impl<S: AsyncRead + AsyncWrite> Future for ClientAuth<S> {
                             self.state = ClientAuthState::Start(start);
                             self.poll()
                         } else if let Ok(failure) = Failure::try_from(stanza) {
-                            let e = failure.data;
+                            let e = format!("{:?}", failure.defined_condition);
                             Err(e)
                         } else {
                             Ok(Async::NotReady)
