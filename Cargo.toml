@@ -1,12 +1,14 @@
 [package]
 name = "tokio-xmpp"
-version = "0.1.1"
-authors = ["Astro <astro@spaceboyz.net>"]
+version = "0.1.2"
+authors = ["Astro <astro@spaceboyz.net>", "Emmanuel Gil Peyrot <linkmauve@linkmauve.fr>", "pep <pep+code@bouah.net>"]
 description = "Asynchronous XMPP for Rust with tokio"
 license = "MPL-2.0"
 homepage = "https://github.com/astro/tokio-xmpp"
 repository = "https://github.com/astro/tokio-xmpp"
 documentation = "https://docs.rs/tokio-xmpp"
+categories = ["asynchronous", "network-programming"]
+keywords = ["xmpp", "tokio"]
 
 [dependencies]
 futures = "0.1"
