@@ -1,12 +1,12 @@
 use std::mem::replace;
-use std::io::{Error, ErrorKind};
+use std::borrow::Cow;
 use futures::{Future, Async, Poll, Stream, sink, Sink};
 use tokio_io::{AsyncRead, AsyncWrite};
 use tokio_codec::Framed;
 use jid::Jid;
 use minidom::Element;
 
-use xmpp_codec::{XMPPCodec, Packet};
+use xmpp_codec::{XMPPCodec, Packet, ParserError};
 use xmpp_stream::XMPPStream;
 
 const NS_XMPP_STREAM: &str = "http://etherx.jabber.org/streams";
@@ -43,7 +43,7 @@ impl<S: AsyncWrite> StreamStart<S> {
 
 impl<S: AsyncRead + AsyncWrite> Future for StreamStart<S> {
     type Item = XMPPStream<S>;
-    type Error = Error;
+    type Error = ParserError;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         let old_state = replace(&mut self.state, StreamStartState::Invalid);
@@ -59,7 +59,7 @@ impl<S: AsyncRead + AsyncWrite> Future for StreamStart<S> {
                     Ok(Async::NotReady) =>
                         (StreamStartState::SendStart(send), Ok(Async::NotReady)),
                     Err(e) =>
-                        (StreamStartState::Invalid, Err(e)),
+                        (StreamStartState::Invalid, Err(e.into())),
                 },
             StreamStartState::RecvStart(mut stream) =>
                 match stream.poll() {
@@ -67,7 +67,7 @@ impl<S: AsyncRead + AsyncWrite> Future for StreamStart<S> {
                         let stream_ns = match stream_attrs.get("xmlns") {
                             Some(ns) => ns.clone(),
                             None =>
-                                return Err(Error::from(ErrorKind::InvalidData)),
+                                return Err(ParserError::Parse(Cow::from("Missing stream namespace"))),
                         };
                         if self.ns == "jabber:client" {
                             retry = true;
@@ -77,7 +77,7 @@ impl<S: AsyncRead + AsyncWrite> Future for StreamStart<S> {
                             let id = match stream_attrs.get("id") {
                                 Some(id) => id.clone(),
                                 None =>
-                                    return Err(Error::from(ErrorKind::InvalidData)),
+                                    return Err(ParserError::Parse(Cow::from("No stream id"))),
                             };
                                                                                                     // FIXME: huge hack, shouldn’t be an element!
                             let stream = XMPPStream::new(self.jid.clone(), stream, self.ns.clone(), Element::builder(id).build());
@@ -85,7 +85,7 @@ impl<S: AsyncRead + AsyncWrite> Future for StreamStart<S> {
                         }
                     },
                     Ok(Async::Ready(_)) =>
-                        return Err(Error::from(ErrorKind::InvalidData)),
+                        return Err(ParserError::Parse(Cow::from("Invalid XML event received"))),
                     Ok(Async::NotReady) =>
                         (StreamStartState::RecvStart(stream), Ok(Async::NotReady)),
                     Err(e) =>
