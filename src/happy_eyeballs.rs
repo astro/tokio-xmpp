@@ -1,37 +1,46 @@
-use std::str::FromStr;
-use std::collections::HashMap;
-use std::net::SocketAddr;
-use futures::{Future, Poll, Async, Stream};
-use tokio_core::reactor::Handle;
-use tokio_core::net::{TcpStream, TcpStreamNew};
-use domain::resolv::Resolver;
-use domain::resolv::lookup::srv::{lookup_srv, LookupSrv, LookupSrvStream};
-use domain::bits::DNameBuf;
+use std::mem;
+use std::net::{SocketAddr, IpAddr};
+use std::collections::{BTreeMap, btree_map};
+use std::collections::VecDeque;
+use futures::{Future, Poll, Async};
+use tokio::net::{ConnectFuture, TcpStream};
+use trust_dns_resolver::{IntoName, Name, ResolverFuture, error::ResolveError};
+use trust_dns_resolver::lookup::SrvLookupFuture;
+use trust_dns_resolver::lookup_ip::LookupIpFuture;
+use trust_dns_proto::rr::rdata::srv::SRV;
 
 pub struct Connecter {
-    handle: Handle,
-    resolver: Resolver,
-    lookup: Option<LookupSrv>,
-    srvs: Option<LookupSrvStream>,
-    connects: HashMap<SocketAddr, TcpStreamNew>,
+    fallback_port: u16,
+    name: Name,
+    domain: Name,
+    resolver_future: Box<Future<Item = ResolverFuture, Error = ResolveError> + Send>,
+    resolver_opt: Option<ResolverFuture>,
+    srv_lookup_opt: Option<SrvLookupFuture>,
+    srvs_opt: Option<btree_map::IntoIter<u16, SRV>>,
+    ip_lookup_opt: Option<(u16, LookupIpFuture)>,
+    ips_opt: Option<(u16, VecDeque<IpAddr>)>,
+    connect_opt: Option<ConnectFuture>,
 }
 
 impl Connecter {
-    pub fn from_lookup(handle: Handle, domain: &str, srv: &str, fallback_port: u16) -> Result<Connecter, String> {
-        let domain = DNameBuf::from_str(domain)
-            .map_err(|e| format!("{}", e))?;
-        let srv = DNameBuf::from_str(srv)
-            .map_err(|e| format!("{}", e))?;
+    pub fn from_lookup(domain: &str, srv: &str, fallback_port: u16) -> Result<Connecter, String> {
+        let resolver_future = ResolverFuture::from_system_conf()
+            .map_err(|e| format!("Configure resolver: {:?}", e))?;
 
-        let resolver = Resolver::new(&handle);
-        let lookup = lookup_srv(resolver.clone(), srv, domain, fallback_port);
+        let name = format!("{}.{}.", srv, domain).into_name()
+            .map_err(|e| format!("Parse service name: {:?}", e))?;
 
         Ok(Connecter {
-            handle,
-            resolver,
-            lookup: Some(lookup),
-            srvs: None,
-            connects: HashMap::new(),
+            fallback_port,
+            name,
+            domain: domain.into_name().map_err(|e| format!("Parse domain name: {:?}", e))?,
+            resolver_future,
+            resolver_opt: None,
+            srv_lookup_opt: None,
+            srvs_opt: None,
+            ip_lookup_opt: None,
+            ips_opt: None,
+            connect_opt: None,
         })
     }
 }
@@ -41,69 +50,104 @@ impl Future for Connecter {
     type Error = String;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        match self.lookup.as_mut().map(|lookup| lookup.poll()) {
-            None | Some(Ok(Async::NotReady)) => (),
-            Some(Ok(Async::Ready(found_srvs))) => {
-                self.lookup = None;
-                match found_srvs {
-                    Some(srvs) =>
-                        self.srvs = Some(srvs.to_stream(self.resolver.clone())),
-                    None =>
-                        return Err("No SRV records".to_owned()),
+        if self.resolver_opt.is_none() {
+            //println!("Poll resolver future");
+            match self.resolver_future.poll() {
+                Ok(Async::Ready(resolver)) => {
+                    self.resolver_opt = Some(resolver);
                 }
-            },
-            Some(Err(e)) =>
-                return Err(format!("{}", e)),
+                Ok(Async::NotReady) => return Ok(Async::NotReady),
+                Err(e) => return Err(format!("Cann't get resolver: {:?}", e)),
+            }
         }
 
-        match self.srvs.as_mut().map(|srv| srv.poll()) {
-            None | Some(Ok(Async::NotReady)) => (),
-            Some(Ok(Async::Ready(None))) =>
-                self.srvs = None,
-            Some(Ok(Async::Ready(Some(srv_item)))) => {
-                let handle = &self.handle;
-                for addr in srv_item.to_socket_addrs() {
-                    self.connects.entry(addr)
-                        .or_insert_with(|| {
-                            // println!("Connect to {}", addr);
-                            TcpStream::connect(&addr, handle)
-                        });
+        if let Some(ref resolver) = self.resolver_opt {
+            if self.srvs_opt.is_none() {
+                if self.srv_lookup_opt.is_none() {
+                    //println!("Lookup srv: {:?}", self.name);
+                    self.srv_lookup_opt = Some(resolver.lookup_srv(&self.name));
                 }
-            },
-            Some(Err(e)) =>
-                return Err(format!("{}", e)),
-        }
 
-        let mut connected_stream = None;
-        self.connects.retain(|_, connect| {
-            if connected_stream.is_some() {
-                return false;
+                if let Some(ref mut srv_lookup) = self.srv_lookup_opt {
+                    match srv_lookup.poll() {
+                        Ok(Async::Ready(t)) => {
+                            let mut srvs = BTreeMap::new();
+                            for srv in t.iter() {
+                                srvs.insert(srv.priority(), srv.clone());
+                            }
+                            srvs.insert(65535, SRV::new(65535, 0, self.fallback_port, self.domain.clone()));
+                            self.srvs_opt = Some(srvs.into_iter());
+                        }
+                        Ok(Async::NotReady) => return Ok(Async::NotReady),
+                        Err(_) => {
+                            //println!("Ignore SVR error: {:?}", e);
+                            let mut srvs = BTreeMap::new();
+                            srvs.insert(65535, SRV::new(65535, 0, self.fallback_port, self.domain.clone()));
+                            self.srvs_opt = Some(srvs.into_iter());
+                        },
+                    }
+                }
             }
 
-            match connect.poll() {
-                Ok(Async::NotReady) => true,
-                Ok(Async::Ready(tcp_stream)) => {
-                    // Success!
-                    connected_stream = Some(tcp_stream);
-                    false
-                },
-                Err(_e) => {
-                    // println!("{}", _e);
-                    false
-                },
-            }
-        });
-        if let Some(tcp_stream) = connected_stream {
-            return Ok(Async::Ready(tcp_stream));
-        }
+            if self.connect_opt.is_none() {
+                if self.ips_opt.is_none() {
+                    if self.ip_lookup_opt.is_none() {
+                        if let Some(ref mut srvs) = self.srvs_opt {
+                            if let Some((_, srv)) = srvs.next() {
+                                //println!("Lookup ip: {:?}", srv);
+                                self.ip_lookup_opt = Some((srv.port(), resolver.lookup_ip(srv.target())));
+                            } else {
+                                return Err("Cann't connect".to_string());
+                            }
+                        }
+                    }
 
-        if  self.lookup.is_none() &&
-            self.srvs.is_none() &&
-            self.connects.is_empty()
-        {
-            return Err("All connection attempts failed".to_owned());
+                    if let Some((port, mut ip_lookup)) = mem::replace(&mut self.ip_lookup_opt, None) {
+                        match ip_lookup.poll() {
+                            Ok(Async::Ready(t)) => {
+                                let mut ip_deque = VecDeque::new();
+                                ip_deque.extend(t.iter());
+                                //println!("IPs: {:?}", ip_deque);
+                                self.ips_opt = Some((port, ip_deque));
+                                self.ip_lookup_opt = None;
+                            },
+                            Ok(Async::NotReady) => {
+                                self.ip_lookup_opt = Some((port, ip_lookup));
+                                return Ok(Async::NotReady)
+                            },
+                            Err(_) => {
+                                //println!("Ignore lookup error: {:?}", e);
+                                self.ip_lookup_opt = None;
+                            }
+                        }
+                    }
+                }
+
+                if let Some((port, mut ip_deque)) = mem::replace(&mut self.ips_opt, None) {
+                    if let Some(ip) = ip_deque.pop_front() {
+                        //println!("Connect to {:?}:{}", ip, port);
+                        self.connect_opt = Some(TcpStream::connect(&SocketAddr::new(ip, port)));
+                        self.ips_opt = Some((port, ip_deque));
+                    }
+                }
+            }
+
+            if let Some(mut connect_future) = mem::replace(&mut self.connect_opt, None) {
+                match connect_future.poll() {
+                    Ok(Async::Ready(t)) => return Ok(Async::Ready(t)),
+                    Ok(Async::NotReady) => {
+                        self.connect_opt = Some(connect_future);
+                        return Ok(Async::NotReady)
+                    }
+                    Err(_) => {
+                        //println!("Ignore connect error: {:?}", e);
+                    },
+                }
+            }
+
         }
 
         Ok(Async::NotReady)
     }
 }
+

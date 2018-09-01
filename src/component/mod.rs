@@ -4,8 +4,7 @@
 use std::mem::replace;
 use std::str::FromStr;
 use std::error::Error;
-use tokio_core::reactor::Handle;
-use tokio_core::net::TcpStream;
+use tokio::net::TcpStream;
 use tokio_io::{AsyncRead, AsyncWrite};
 use futures::{Future, Stream, Poll, Async, Sink, StartSend, AsyncSink};
 use minidom::Element;
@@ -41,21 +40,21 @@ impl Component {
     ///
     /// Start polling the returned instance so that it will connect
     /// and yield events.
-    pub fn new(jid: &str, password: &str, server: &str, port: u16, handle: Handle) -> Result<Self, JidParseError> {
+    pub fn new(jid: &str, password: &str, server: &str, port: u16) -> Result<Self, JidParseError> {
         let jid = Jid::from_str(jid)?;
         let password = password.to_owned();
-        let connect = Self::make_connect(jid.clone(), password, server, port, handle);
+        let connect = Self::make_connect(jid.clone(), password, server, port);
         Ok(Component {
             jid,
             state: ComponentState::Connecting(connect),
         })
     }
 
-    fn make_connect(jid: Jid, password: String, server: &str, port: u16, handle: Handle) -> Box<Future<Item=XMPPStream, Error=String>> {
+    fn make_connect(jid: Jid, password: String, server: &str, port: u16) -> Box<Future<Item=XMPPStream, Error=String>> {
         let jid1 = jid.clone();
         let password = password;
         Box::new(
-            Connecter::from_lookup(handle, server, "_xmpp-component._tcp", port)
+            Connecter::from_lookup(server, "_xmpp-component._tcp", port)
                 .expect("Connector::from_lookup")
                 .and_then(move |tcp_stream| {
                     xmpp_stream::XMPPStream::start(tcp_stream, jid1, NS_JABBER_COMPONENT_ACCEPT.to_owned())
