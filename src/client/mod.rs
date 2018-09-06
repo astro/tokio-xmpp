@@ -147,7 +147,7 @@ impl Stream for Client {
                     Ok(Async::NotReady) => (),
                     Ok(Async::Ready(())) => (),
                     Err(e) =>
-                        return Err(e.into()),
+                        return Err(e)?,
                 };
 
                 // Poll stream
@@ -167,7 +167,7 @@ impl Stream for Client {
                         Ok(Async::NotReady)
                     },
                     Err(e) =>
-                        Err(e.into()),
+                        Err(e)?,
                 }
             },
         }
@@ -190,7 +190,7 @@ impl Sink for Client {
                         Ok(AsyncSink::Ready)
                     },
                     Err(e) =>
-                        Err(e.into()),
+                        Err(e)?,
                 },
             _ =>
                 Ok(AsyncSink::NotReady(item)),

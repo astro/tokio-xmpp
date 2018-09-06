@@ -40,33 +40,26 @@ impl<S: AsyncWrite> ClientAuth<S> {
         ];
 
         let mech_names: Vec<String> =
-            match stream.stream_features.get_child("mechanisms", NS_XMPP_SASL) {
-                None =>
-                    return Err(AuthError::NoMechanism.into()),
-                Some(mechs) =>
-                    mechs.children()
-                    .filter(|child| child.is("mechanism", NS_XMPP_SASL))
-                    .map(|mech_el| mech_el.text())
-                    .collect(),
-            };
+            stream.stream_features.get_child("mechanisms", NS_XMPP_SASL)
+            .ok_or(AuthError::NoMechanism)?
+            .children()
+            .filter(|child| child.is("mechanism", NS_XMPP_SASL))
+            .map(|mech_el| mech_el.text())
+            .collect();
         // println!("SASL mechanisms offered: {:?}", mech_names);
 
         for mut mech in mechs {
             let name = mech.name().to_owned();
             if mech_names.iter().any(|name1| *name1 == name) {
                 // println!("SASL mechanism selected: {:?}", name);
-                let initial = match mech.initial() {
-                    Ok(initial) => initial,
-                    Err(e) => return Err(AuthError::Sasl(e).into()),
-                };
+                let initial = mech.initial()
+                    .map_err(AuthError::Sasl)?;
                 let mut this = ClientAuth {
                     state: ClientAuthState::Invalid,
                     mechanism: mech,
                 };
-                let mechanism = match XMPPMechanism::from_str(&name) {
-                    Ok(mechanism) => mechanism,
-                    Err(e) => return Err(ProtocolError::Parsers(e).into()),
-                };
+                let mechanism = XMPPMechanism::from_str(&name)
+                    .map_err(ProtocolError::Parsers)?;
                 this.send(
                     stream,
                     Auth {
@@ -78,7 +71,7 @@ impl<S: AsyncWrite> ClientAuth<S> {
             }
         }
 
-        Err(AuthError::NoMechanism.into())
+        Err(AuthError::NoMechanism)?
     }
 
     fn send<N: Into<Element>>(&mut self, stream: XMPPStream<S>, nonza: N) {
@@ -107,7 +100,7 @@ impl<S: AsyncRead + AsyncWrite> Future for ClientAuth<S> {
                         Ok(Async::NotReady)
                     },
                     Err(e) =>
-                        Err(e.into()),
+                        Err(e)?,
                 },
             ClientAuthState::WaitRecv(mut stream) =>
                 match stream.poll() {
@@ -122,7 +115,7 @@ impl<S: AsyncRead + AsyncWrite> Future for ClientAuth<S> {
                             self.state = ClientAuthState::Start(start);
                             self.poll()
                         } else if let Ok(failure) = Failure::try_from(stanza) {
-                            Err(AuthError::Fail(failure.defined_condition).into())
+                            Err(AuthError::Fail(failure.defined_condition))?
                         } else {
                             Ok(Async::NotReady)
                         }
@@ -136,7 +129,7 @@ impl<S: AsyncRead + AsyncWrite> Future for ClientAuth<S> {
                         Ok(Async::NotReady)
                     },
                     Err(e) =>
-                        Err(ProtocolError::Parser(e).into())
+                        Err(ProtocolError::Parser(e))?
                 },
             ClientAuthState::Start(mut start) =>
                 match start.poll() {
@@ -147,7 +140,7 @@ impl<S: AsyncRead + AsyncWrite> Future for ClientAuth<S> {
                         Ok(Async::NotReady)
                     },
                     Err(e) =>
-                        Err(e.into())
+                        Err(e)
                 },
             ClientAuthState::Invalid =>
                 unreachable!(),

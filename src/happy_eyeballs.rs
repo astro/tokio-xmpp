@@ -50,13 +50,11 @@ impl Future for Connecter {
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         if self.resolver_opt.is_none() {
             //println!("Poll resolver future");
-            match self.resolver_future.poll() {
-                Ok(Async::Ready(resolver)) =>
+            match self.resolver_future.poll()? {
+                Async::Ready(resolver) =>
                     self.resolver_opt = Some(resolver),
-                Ok(Async::NotReady) =>
+                Async::NotReady =>
                     return Ok(Async::NotReady),
-                Err(e) =>
-                    return Err(e.into()),
             }
         }
 

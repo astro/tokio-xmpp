@@ -61,7 +61,7 @@ impl<S: AsyncRead + AsyncWrite> Future for ClientBind<S> {
                         Ok(Async::NotReady)
                     },
                     Err(e) =>
-                        Err(e.into())
+                        Err(e)?
                 }
             },
             ClientBind::WaitRecv(mut stream) => {
@@ -80,7 +80,7 @@ impl<S: AsyncRead + AsyncWrite> Future for ClientBind<S> {
                                         Ok(Async::Ready(stream))
                                     },
                                     _ =>
-                                        Err(ProtocolError::InvalidBindResponse.into()),
+                                        Err(ProtocolError::InvalidBindResponse)?,
                                 }
                             } else {
                                 Ok(Async::NotReady)
@@ -96,7 +96,7 @@ impl<S: AsyncRead + AsyncWrite> Future for ClientBind<S> {
                         Ok(Async::NotReady)
                     },
                     Err(e) =>
-                        Err(e.into()),
+                        Err(e)?,
                 }
             },
             ClientBind::Invalid =>

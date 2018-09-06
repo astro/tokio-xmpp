@@ -100,7 +100,7 @@ impl Stream for Component {
                     Ok(Async::NotReady) => (),
                     Ok(Async::Ready(())) => (),
                     Err(e) =>
-                        return Err(e.into()),
+                        return Err(e)?,
                 };
 
                 // Poll stream
@@ -123,7 +123,7 @@ impl Stream for Component {
                         Ok(Async::NotReady)
                     },
                     Err(e) =>
-                        Err(e.into()),
+                        Err(e)?,
                 }
             },
         }
@@ -146,7 +146,7 @@ impl Sink for Component {
                         Ok(AsyncSink::Ready)
                     },
                     Err(e) =>
-                        Err(e.into()),
+                        Err(e)?,
                 },
             _ =>
                 Ok(AsyncSink::NotReady(item)),

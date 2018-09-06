@@ -31,7 +31,7 @@ impl<S: AsyncWrite> ComponentAuth<S> {
             stream,
             Handshake::from_password_and_stream_id(&password, &sid)
         );
-        return Ok(this);
+        Ok(this)
     }
 
     fn send(&mut self, stream: XMPPStream<S>, handshake: Handshake) {
@@ -61,7 +61,7 @@ impl<S: AsyncRead + AsyncWrite> Future for ComponentAuth<S> {
                         Ok(Async::NotReady)
                     },
                     Err(e) =>
-                        Err(e.into()),
+                        Err(e)?
                 },
             ComponentAuthState::WaitRecv(mut stream) =>
                 match stream.poll() {
@@ -85,7 +85,7 @@ impl<S: AsyncRead + AsyncWrite> Future for ComponentAuth<S> {
                         Ok(Async::NotReady)
                     },
                     Err(e) =>
-                        Err(e.into()),
+                        Err(e)?
                 },
             ComponentAuthState::Invalid =>
                 unreachable!(),
