@@ -1,8 +1,6 @@
 use std::mem::replace;
 use std::str::FromStr;
-use std::error::Error as StdError;
-use tokio_core::reactor::Handle;
-use tokio_core::net::TcpStream;
+use tokio::net::TcpStream;
 use tokio_io::{AsyncRead, AsyncWrite};
 use tokio_tls::TlsStream;
 use futures::{Future, Stream, Poll, Async, Sink, StartSend, AsyncSink, done};
@@ -45,17 +43,17 @@ impl Client {
     ///
     /// Start polling the returned instance so that it will connect
     /// and yield events.
-    pub fn new(jid: &str, password: &str, handle: Handle) -> Result<Self, JidParseError> {
+    pub fn new(jid: &str, password: &str) -> Result<Self, JidParseError> {
         let jid = Jid::from_str(jid)?;
         let password = password.to_owned();
-        let connect = Self::make_connect(jid.clone(), password.clone(), handle);
+        let connect = Self::make_connect(jid.clone(), password.clone());
         Ok(Client {
             jid,
             state: ClientState::Connecting(Box::new(connect)),
         })
     }
 
-    fn make_connect(jid: Jid, password: String, handle: Handle) -> impl Future<Item=XMPPStream, Error=Error> {
+    fn make_connect(jid: Jid, password: String) -> impl Future<Item=XMPPStream, Error=Error> {
         let username = jid.node.as_ref().unwrap().to_owned();
         let jid1 = jid.clone();
         let jid2 = jid.clone();
@@ -63,8 +61,8 @@ impl Client {
         done(idna::domain_to_ascii(&jid.domain))
             .map_err(|_| Error::Idna)
             .and_then(|domain|
-                      done(Connecter::from_lookup(handle, &domain, "_xmpp-client._tcp", 5222))
-                      .map_err(Error::Domain)
+                      done(Connecter::from_lookup(&domain, "_xmpp-client._tcp", 5222))
+                      .map_err(Error::Connection)
             )
             .and_then(|connecter|
                       connecter
@@ -149,7 +147,7 @@ impl Stream for Client {
                     Ok(Async::NotReady) => (),
                     Ok(Async::Ready(())) => (),
                     Err(e) =>
-                        return Err(Error::Io(e)),
+                        return Err(e.into()),
                 };
 
                 // Poll stream
@@ -178,7 +176,7 @@ impl Stream for Client {
 
 impl Sink for Client {
     type SinkItem = Element;
-    type SinkError = String;
+    type SinkError = Error;
 
     fn start_send(&mut self, item: Self::SinkItem) -> StartSend<Self::SinkItem, Self::SinkError> {
         match self.state {
@@ -192,7 +190,7 @@ impl Sink for Client {
                         Ok(AsyncSink::Ready)
                     },
                     Err(e) =>
-                        Err(e.description().to_owned()),
+                        Err(e.into()),
                 },
             _ =>
                 Ok(AsyncSink::NotReady(item)),
@@ -203,7 +201,7 @@ impl Sink for Client {
         match self.state {
             ClientState::Connected(ref mut stream) =>
                 stream.poll_complete()
-                .map_err(|e| e.description().to_owned()),
+                .map_err(|e| e.into()),
             _ =>
                 Ok(Async::Ready(())),
         }

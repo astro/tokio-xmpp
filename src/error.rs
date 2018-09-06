@@ -3,9 +3,10 @@ use std::error::Error as StdError;
 use std::str::Utf8Error;
 use std::borrow::Cow;
 use std::fmt;
-use domain::resolv::error::Error as DNSError;
-use domain::bits::name::FromStrError;
 use native_tls::Error as TlsError;
+use trust_dns_resolver::error::ResolveError;
+use trust_dns_proto::error::ProtoError;
+
 use xmpp_parsers::error::Error as ParsersError;
 use xmpp_parsers::sasl::DefinedCondition as SaslDefinedCondition;
 
@@ -16,7 +17,6 @@ pub enum Error {
     /// DNS label conversion error, no details available from module
     /// `idna`
     Idna,
-    Domain(FromStrError),
     Protocol(ProtocolError),
     Auth(AuthError),
     Tls(TlsError),
@@ -90,5 +90,29 @@ pub enum AuthError {
 pub enum ConnecterError {
     NoSrv,
     AllFailed,
-    DNS(DNSError),
+    /// DNS name error
+    Domain(DomainError),
+    /// DNS resolution error
+    Dns(ProtoError),
+    /// DNS resolution error
+    Resolve(ResolveError),
+}
+
+/// DNS name error wrapper type
+#[derive(Debug)]
+pub struct DomainError(pub String);
+
+impl StdError for DomainError {
+    fn description(&self) -> &str {
+        &self.0
+    }
+    fn cause(&self) -> Option<&StdError> {
+        None
+    }
+}
+
+impl fmt::Display for DomainError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
 }

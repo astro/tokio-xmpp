@@ -3,7 +3,7 @@
 //! XMPP implemeentation with asynchronous I/O using Tokio.
 
 extern crate futures;
-extern crate tokio_core;
+extern crate tokio;
 extern crate tokio_io;
 extern crate tokio_codec;
 extern crate bytes;
@@ -14,7 +14,8 @@ extern crate native_tls;
 extern crate tokio_tls;
 extern crate sasl;
 extern crate jid;
-extern crate domain;
+extern crate trust_dns_resolver;
+extern crate trust_dns_proto;
 extern crate idna;
 extern crate xmpp_parsers;
 extern crate try_from;

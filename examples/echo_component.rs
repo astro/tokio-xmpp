@@ -1,5 +1,5 @@
 extern crate futures;
-extern crate tokio_core;
+extern crate tokio;
 extern crate tokio_xmpp;
 extern crate jid;
 extern crate minidom;
@@ -10,7 +10,7 @@ use std::env::args;
 use std::process::exit;
 use std::str::FromStr;
 use try_from::TryFrom;
-use tokio_core::reactor::Core;
+use tokio::runtime::current_thread::Runtime;
 use futures::{Stream, Sink, future};
 use tokio_xmpp::Component;
 use minidom::Element;
@@ -30,10 +30,10 @@ fn main() {
     let port: u16 = args.get(4).unwrap().parse().unwrap_or(5347u16);
 
     // tokio_core context
-    let mut core = Core::new().unwrap();
+    let mut rt = Runtime::new().unwrap();
     // Component instance
-    println!("{} {} {} {} {:?}", jid, password, server, port, core.handle());
-    let component = Component::new(jid, password, server, port, core.handle()).unwrap();
+    println!("{} {} {} {}", jid, password, server, port);
+    let component = Component::new(jid, password, server, port).unwrap();
 
     // Make the two interfaces for sending and receiving independent
     // of each other so we can move one into a closure.
@@ -70,7 +70,7 @@ fn main() {
     });
 
     // Start polling `done`
-    match core.run(done) {
+    match rt.block_on(done) {
         Ok(_) => (),
         Err(e) => {
             println!("Fatal: {}", e);

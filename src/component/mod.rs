@@ -3,9 +3,7 @@
 //! allowed to use any user and resource identifiers in their stanzas.
 use std::mem::replace;
 use std::str::FromStr;
-use std::error::Error as StdError;
-use tokio_core::reactor::Handle;
-use tokio_core::net::TcpStream;
+use tokio::net::TcpStream;
 use tokio_io::{AsyncRead, AsyncWrite};
 use futures::{Future, Stream, Poll, Async, Sink, StartSend, AsyncSink, done};
 use minidom::Element;
@@ -42,24 +40,23 @@ impl Component {
     ///
     /// Start polling the returned instance so that it will connect
     /// and yield events.
-    pub fn new(jid: &str, password: &str, server: &str, port: u16, handle: Handle) -> Result<Self, JidParseError> {
+    pub fn new(jid: &str, password: &str, server: &str, port: u16) -> Result<Self, JidParseError> {
         let jid = Jid::from_str(jid)?;
         let password = password.to_owned();
-        let connect = Self::make_connect(jid.clone(), password, server, port, handle);
+        let connect = Self::make_connect(jid.clone(), password, server, port);
         Ok(Component {
             jid,
             state: ComponentState::Connecting(Box::new(connect)),
         })
     }
 
-    fn make_connect(jid: Jid, password: String, server: &str, port: u16, handle: Handle) -> impl Future<Item=XMPPStream, Error=Error> {
+    fn make_connect(jid: Jid, password: String, server: &str, port: u16) -> impl Future<Item=XMPPStream, Error=Error> {
         let jid1 = jid.clone();
         let password = password;
-        done(Connecter::from_lookup(handle, server, "_xmpp-component._tcp", port))
-            .map_err(Error::Domain)
-            .and_then(|connecter| connecter
-                      .map_err(Error::Connection)
-            ).and_then(move |tcp_stream| {
+        done(Connecter::from_lookup(server, "_xmpp-component._tcp", port))
+            .and_then(|connecter| connecter)
+            .map_err(Error::Connection)
+            .and_then(move |tcp_stream| {
                 xmpp_stream::XMPPStream::start(tcp_stream, jid1, NS_JABBER_COMPONENT_ACCEPT.to_owned())
             }).and_then(move |xmpp_stream| {
                 Self::auth(xmpp_stream, password).expect("auth")
@@ -135,7 +132,7 @@ impl Stream for Component {
 
 impl Sink for Component {
     type SinkItem = Element;
-    type SinkError = String;
+    type SinkError = Error;
 
     fn start_send(&mut self, item: Self::SinkItem) -> StartSend<Self::SinkItem, Self::SinkError> {
         match self.state {
@@ -149,7 +146,7 @@ impl Sink for Component {
                         Ok(AsyncSink::Ready)
                     },
                     Err(e) =>
-                        Err(e.description().to_owned()),
+                        Err(e.into()),
                 },
             _ =>
                 Ok(AsyncSink::NotReady(item)),
@@ -160,7 +157,7 @@ impl Sink for Component {
         match &mut self.state {
             &mut ComponentState::Connected(ref mut stream) =>
                 stream.poll_complete()
-                .map_err(|e| e.description().to_owned()),
+                .map_err(|e| e.into()),
             _ =>
                 Ok(Async::Ready(())),
         }

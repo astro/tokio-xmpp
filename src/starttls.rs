@@ -3,8 +3,8 @@ use futures::{Future, Sink, Poll, Async};
 use futures::stream::Stream;
 use futures::sink;
 use tokio_io::{AsyncRead, AsyncWrite};
-use tokio_tls::{TlsStream, TlsConnectorExt, ConnectAsync};
-use native_tls::TlsConnector;
+use tokio_tls::{TlsStream, TlsConnector, Connect};
+use native_tls::TlsConnector as NativeTlsConnector;
 use minidom::Element;
 use jid::Jid;
 
@@ -26,7 +26,7 @@ enum StartTlsClientState<S: AsyncRead + AsyncWrite> {
     Invalid,
     SendStartTls(sink::Send<XMPPStream<S>>),
     AwaitProceed(XMPPStream<S>),
-    StartingTls(ConnectAsync<S>),
+    StartingTls(Connect<S>),
 }
 
 impl<S: AsyncRead + AsyncWrite> StartTlsClient<S> {
@@ -54,7 +54,7 @@ impl<S: AsyncRead + AsyncWrite> Future for StartTlsClient<S> {
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         let old_state = replace(&mut self.state, StartTlsClientState::Invalid);
         let mut retry = false;
-        
+
         let (new_state, result) = match old_state {
             StartTlsClientState::SendStartTls(mut send) =>
                 match send.poll() {
@@ -74,9 +74,9 @@ impl<S: AsyncRead + AsyncWrite> Future for StartTlsClient<S> {
                         if stanza.name() == "proceed" =>
                     {
                         let stream = xmpp_stream.stream.into_inner();
-                        let connect = TlsConnector::builder().unwrap()
-                            .build().unwrap()
-                            .connect_async(&self.jid.domain, stream);
+                        let connect = TlsConnector::from(NativeTlsConnector::builder()
+                            .build().unwrap())
+                            .connect(&self.jid.domain, stream);
                         let new_state = StartTlsClientState::StartingTls(connect);
                         retry = true;
                         (new_state, Ok(Async::NotReady))

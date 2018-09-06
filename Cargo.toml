@@ -12,18 +12,18 @@ keywords = ["xmpp", "tokio"]
 
 [dependencies]
 futures = "0.1"
-tokio-core = "0.1"
+tokio = "0.1"
 tokio-io = "0.1"
 tokio-codec = "0.1"
 bytes = "0.4.9"
 xml5ever = "0.12"
 minidom = "0.9"
-# TODO: update to 0.2.0
-native-tls = "0.1"
-tokio-tls = "0.1"
+native-tls = "0.2"
+tokio-tls = "0.2"
 sasl = "0.4"
 jid = { version = "0.5", features = ["minidom"] }
-domain = "0.2"
+trust-dns-resolver = "0.9.1"
+trust-dns-proto = "0.4.0"
 xmpp-parsers = "0.11"
 idna = "0.1"
 try_from = "0.2"
