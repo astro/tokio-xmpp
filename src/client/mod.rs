@@ -61,7 +61,7 @@ impl Client {
         done(idna::domain_to_ascii(&jid.domain))
             .map_err(|_| Error::Idna)
             .and_then(|domain|
-                      done(Connecter::from_lookup(&domain, "_xmpp-client._tcp", 5222))
+                      done(Connecter::from_lookup(&domain, Some("_xmpp-client._tcp"), 5222))
                       .map_err(Error::Connection)
             )
             .and_then(|connecter|
@@ -75,10 +75,8 @@ impl Client {
                 } else {
                     Err(Error::Protocol(ProtocolError::NoTls))
                 }
-            }).and_then(|starttls|
-                        // TODO: flatten?
-                        starttls
-            ).and_then(|tls_stream|
+            }).flatten()
+            .and_then(|tls_stream|
                        XMPPStream::start(tls_stream, jid2, NS_JABBER_CLIENT.to_owned())
             ).and_then(move |xmpp_stream|
                        done(Self::auth(xmpp_stream, username, password))

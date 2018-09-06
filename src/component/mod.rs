@@ -53,8 +53,8 @@ impl Component {
     fn make_connect(jid: Jid, password: String, server: &str, port: u16) -> impl Future<Item=XMPPStream, Error=Error> {
         let jid1 = jid.clone();
         let password = password;
-        done(Connecter::from_lookup(server, "_xmpp-component._tcp", port))
-            .and_then(|connecter| connecter)
+        done(Connecter::from_lookup(server, None, port))
+            .flatten()
             .map_err(Error::Connection)
             .and_then(move |tcp_stream| {
                 xmpp_stream::XMPPStream::start(tcp_stream, jid1, NS_JABBER_COMPONENT_ACCEPT.to_owned())
