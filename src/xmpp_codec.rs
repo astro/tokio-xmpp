@@ -6,19 +6,17 @@ use std::iter::FromIterator;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::fmt::Write;
-use std::str::{from_utf8, Utf8Error};
+use std::str::from_utf8;
 use std::io;
 use std::collections::HashMap;
 use std::collections::vec_deque::VecDeque;
-use std::error::Error as StdError;
-use std::fmt;
-use std::borrow::Cow;
 use tokio_codec::{Encoder, Decoder};
 use minidom::Element;
 use xml5ever::tokenizer::{XmlTokenizer, TokenSink, Token, Tag, TagKind};
 use xml5ever::interface::Attribute;
 use bytes::{BytesMut, BufMut};
 use quick_xml::Writer as EventWriter;
+use {ParserError, ParseError};
 
 /// Anything that can be sent or received on an XMPP/XML stream
 #[derive(Debug)]
@@ -31,55 +29,6 @@ pub enum Packet {
     Text(String),
     /// `</stream:stream>` closing tag
     StreamEnd,
-}
-
-/// Causes for stream parsing errors
-#[derive(Debug)]
-pub enum ParserError {
-    /// Encoding error
-    Utf8(Utf8Error),
-    /// XML parse error
-    Parse(Cow<'static, str>),
-    /// Illegal `</>`
-    ShortTag,
-    /// Required by `impl Decoder`
-    IO(io::Error),
-}
-
-impl From<io::Error> for ParserError {
-    fn from(e: io::Error) -> Self {
-        ParserError::IO(e)
-    }
-}
-
-impl StdError for ParserError {
-    fn description(&self) -> &str {
-        match *self {
-            ParserError::Utf8(ref ue) => ue.description(),
-            ParserError::Parse(ref pe) => pe,
-            ParserError::ShortTag => "short tag",
-            ParserError::IO(ref ie) => ie.description(),
-        }
-    }
-
-    fn cause(&self) -> Option<&StdError> {
-        match *self {
-            ParserError::Utf8(ref ue) => ue.cause(),
-            ParserError::IO(ref ie) => ie.cause(),
-            _ => None,
-        }
-    }
-}
-
-impl fmt::Display for ParserError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            ParserError::Utf8(ref ue) => write!(f, "{}", ue),
-            ParserError::Parse(ref pe) => write!(f, "{}", pe),
-            ParserError::ShortTag => write!(f, "Short tag"),
-            ParserError::IO(ref ie) => write!(f, "{}", ie),
-        }
-    }
 }
 
 type QueueItem = Result<Packet, ParserError>;
@@ -220,7 +169,7 @@ impl TokenSink for ParserSink {
                 self.push_queue(Packet::StreamEnd),
             Token::ParseError(s) => {
                 // println!("ParseError: {:?}", s);
-                self.push_queue_error(ParserError::Parse(s));
+                self.push_queue_error(ParserError::Parse(ParseError(s)));
             },
             _ => (),
         }

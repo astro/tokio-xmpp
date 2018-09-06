@@ -1,5 +1,4 @@
 use std::mem::replace;
-use std::error::Error;
 use futures::{Future, Poll, Async, sink, Stream};
 use tokio_io::{AsyncRead, AsyncWrite};
 use xmpp_parsers::iq::{Iq, IqType};
@@ -8,6 +7,7 @@ use try_from::TryFrom;
 
 use xmpp_codec::Packet;
 use xmpp_stream::XMPPStream;
+use {Error, ProtocolError};
 
 const NS_XMPP_BIND: &str = "urn:ietf:params:xml:ns:xmpp-bind";
 const BIND_REQ_ID: &str = "resource-bind";
@@ -42,7 +42,7 @@ impl<S: AsyncWrite> ClientBind<S> {
 
 impl<S: AsyncRead + AsyncWrite> Future for ClientBind<S> {
     type Item = XMPPStream<S>;
-    type Error = String;
+    type Error = Error;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         let state = replace(self, ClientBind::Invalid);
@@ -61,7 +61,7 @@ impl<S: AsyncRead + AsyncWrite> Future for ClientBind<S> {
                         Ok(Async::NotReady)
                     },
                     Err(e) =>
-                        Err(e.description().to_owned()),
+                        Err(e.into())
                 }
             },
             ClientBind::WaitRecv(mut stream) => {
@@ -80,7 +80,7 @@ impl<S: AsyncRead + AsyncWrite> Future for ClientBind<S> {
                                         Ok(Async::Ready(stream))
                                     },
                                     _ =>
-                                        Err("resource bind response".to_owned()),
+                                        Err(ProtocolError::InvalidBindResponse.into()),
                                 }
                             } else {
                                 Ok(Async::NotReady)
@@ -96,7 +96,7 @@ impl<S: AsyncRead + AsyncWrite> Future for ClientBind<S> {
                         Ok(Async::NotReady)
                     },
                     Err(e) =>
-                        Err(e.description().to_owned()),
+                        Err(e.into()),
                 }
             },
             ClientBind::Invalid =>

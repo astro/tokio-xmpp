@@ -1,11 +1,11 @@
 use std::mem::replace;
 use std::str::FromStr;
-use std::error::Error;
+use std::error::Error as StdError;
 use tokio_core::reactor::Handle;
 use tokio_core::net::TcpStream;
 use tokio_io::{AsyncRead, AsyncWrite};
 use tokio_tls::TlsStream;
-use futures::{future, Future, Stream, Poll, Async, Sink, StartSend, AsyncSink};
+use futures::{Future, Stream, Poll, Async, Sink, StartSend, AsyncSink, done};
 use minidom::Element;
 use jid::{Jid, JidParseError};
 use sasl::common::{Credentials, ChannelBinding};
@@ -16,6 +16,7 @@ use super::xmpp_stream;
 use super::starttls::{NS_XMPP_TLS, StartTlsClient};
 use super::happy_eyeballs::Connecter;
 use super::event::Event;
+use super::{Error, ProtocolError};
 
 mod auth;
 use self::auth::ClientAuth;
@@ -35,7 +36,7 @@ const NS_JABBER_CLIENT: &str = "jabber:client";
 enum ClientState {
     Invalid,
     Disconnected,
-    Connecting(Box<Future<Item=XMPPStream, Error=String>>),
+    Connecting(Box<Future<Item=XMPPStream, Error=Error>>),
     Connected(XMPPStream),
 }
 
@@ -50,47 +51,47 @@ impl Client {
         let connect = Self::make_connect(jid.clone(), password.clone(), handle);
         Ok(Client {
             jid,
-            state: ClientState::Connecting(connect),
+            state: ClientState::Connecting(Box::new(connect)),
         })
     }
 
-    fn make_connect(jid: Jid, password: String, handle: Handle) -> Box<Future<Item=XMPPStream, Error=String>> {
+    fn make_connect(jid: Jid, password: String, handle: Handle) -> impl Future<Item=XMPPStream, Error=Error> {
         let username = jid.node.as_ref().unwrap().to_owned();
         let jid1 = jid.clone();
         let jid2 = jid.clone();
         let password = password;
-        let domain = match idna::domain_to_ascii(&jid.domain) {
-            Ok(domain) =>
-                domain,
-            Err(e) =>
-                return Box::new(future::err(format!("{:?}", e))),
-        };
-        Box::new(
-            Connecter::from_lookup(handle, &domain, "_xmpp-client._tcp", 5222)
-                .expect("Connector::from_lookup")
-                .and_then(move |tcp_stream|
-                          xmpp_stream::XMPPStream::start(tcp_stream, jid1, NS_JABBER_CLIENT.to_owned())
-                          .map_err(|e| format!("{}", e))
-                ).and_then(|xmpp_stream| {
-                    if Self::can_starttls(&xmpp_stream) {
-                        Ok(Self::starttls(xmpp_stream))
-                    } else {
-                        Err("No STARTTLS".to_owned())
-                    }
-                }).and_then(|starttls|
-                            starttls
-                ).and_then(|tls_stream|
-                          XMPPStream::start(tls_stream, jid2, NS_JABBER_CLIENT.to_owned())
-                          .map_err(|e| format!("{}", e))
-                ).and_then(move |xmpp_stream| {
-                    Self::auth(xmpp_stream, username, password).expect("auth")
-                }).and_then(|xmpp_stream| {
-                    Self::bind(xmpp_stream)
-                }).and_then(|xmpp_stream| {
-                    // println!("Bound to {}", xmpp_stream.jid);
-                    Ok(xmpp_stream)
-                })
-        )
+        done(idna::domain_to_ascii(&jid.domain))
+            .map_err(|_| Error::Idna)
+            .and_then(|domain|
+                      done(Connecter::from_lookup(handle, &domain, "_xmpp-client._tcp", 5222))
+                      .map_err(Error::Domain)
+            )
+            .and_then(|connecter|
+                      connecter
+                      .map_err(Error::Connection)
+            ).and_then(move |tcp_stream|
+                      xmpp_stream::XMPPStream::start(tcp_stream, jid1, NS_JABBER_CLIENT.to_owned())
+            ).and_then(|xmpp_stream| {
+                if Self::can_starttls(&xmpp_stream) {
+                    Ok(Self::starttls(xmpp_stream))
+                } else {
+                    Err(Error::Protocol(ProtocolError::NoTls))
+                }
+            }).and_then(|starttls|
+                        // TODO: flatten?
+                        starttls
+            ).and_then(|tls_stream|
+                       XMPPStream::start(tls_stream, jid2, NS_JABBER_CLIENT.to_owned())
+            ).and_then(move |xmpp_stream|
+                       done(Self::auth(xmpp_stream, username, password))
+                       // TODO: flatten?
+            ).and_then(|auth| auth)
+            .and_then(|xmpp_stream| {
+                Self::bind(xmpp_stream)
+            }).and_then(|xmpp_stream| {
+                // println!("Bound to {}", xmpp_stream.jid);
+                Ok(xmpp_stream)
+            })
     }
 
     fn can_starttls<S>(stream: &xmpp_stream::XMPPStream<S>) -> bool {
@@ -103,7 +104,7 @@ impl Client {
         StartTlsClient::from_stream(stream)
     }
 
-    fn auth<S: AsyncRead + AsyncWrite>(stream: xmpp_stream::XMPPStream<S>, username: String, password: String) -> Result<ClientAuth<S>, String> {
+    fn auth<S: AsyncRead + AsyncWrite>(stream: xmpp_stream::XMPPStream<S>, username: String, password: String) -> Result<ClientAuth<S>, Error> {
         let creds = Credentials::default()
             .with_username(username)
             .with_password(password)
@@ -118,14 +119,14 @@ impl Client {
 
 impl Stream for Client {
     type Item = Event;
-    type Error = String;
+    type Error = Error;
 
     fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
         let state = replace(&mut self.state, ClientState::Invalid);
 
         match state {
             ClientState::Invalid =>
-                Err("invalid client state".to_owned()),
+                Err(Error::InvalidState),
             ClientState::Disconnected =>
                 Ok(Async::Ready(None)),
             ClientState::Connecting(mut connect) => {
@@ -148,7 +149,7 @@ impl Stream for Client {
                     Ok(Async::NotReady) => (),
                     Ok(Async::Ready(())) => (),
                     Err(e) =>
-                        return Err(e.description().to_owned()),
+                        return Err(Error::Io(e)),
                 };
 
                 // Poll stream
@@ -168,7 +169,7 @@ impl Stream for Client {
                         Ok(Async::NotReady)
                     },
                     Err(e) =>
-                        Err(e.description().to_owned()),
+                        Err(e.into()),
                 }
             },
         }

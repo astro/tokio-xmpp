@@ -1,4 +1,4 @@
-#![deny(unsafe_code, unused, missing_docs)]
+// #![deny(unsafe_code, unused, missing_docs)]
 
 //! XMPP implemeentation with asynchronous I/O using Tokio.
 
@@ -18,6 +18,8 @@ extern crate domain;
 extern crate idna;
 extern crate xmpp_parsers;
 extern crate try_from;
+#[macro_use]
+extern crate derive_error;
 
 pub mod xmpp_codec;
 pub mod xmpp_stream;
@@ -31,3 +33,5 @@ mod client;
 pub use client::Client;
 mod component;
 pub use component::Component;
+mod error;
+pub use error::{Error, ProtocolError, AuthError, ConnecterError, ParseError, ParserError};

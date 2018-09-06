@@ -6,7 +6,8 @@ use tokio_core::reactor::Handle;
 use tokio_core::net::{TcpStream, TcpStreamNew};
 use domain::resolv::Resolver;
 use domain::resolv::lookup::srv::{lookup_srv, LookupSrv, LookupSrvStream};
-use domain::bits::DNameBuf;
+use domain::bits::name::{DNameBuf, FromStrError};
+use ConnecterError;
 
 pub struct Connecter {
     handle: Handle,
@@ -17,11 +18,9 @@ pub struct Connecter {
 }
 
 impl Connecter {
-    pub fn from_lookup(handle: Handle, domain: &str, srv: &str, fallback_port: u16) -> Result<Connecter, String> {
-        let domain = DNameBuf::from_str(domain)
-            .map_err(|e| format!("{}", e))?;
-        let srv = DNameBuf::from_str(srv)
-            .map_err(|e| format!("{}", e))?;
+    pub fn from_lookup(handle: Handle, domain: &str, srv: &str, fallback_port: u16) -> Result<Connecter, FromStrError> {
+        let domain = DNameBuf::from_str(domain)?;
+        let srv = DNameBuf::from_str(srv)?;
 
         let resolver = Resolver::new(&handle);
         let lookup = lookup_srv(resolver.clone(), srv, domain, fallback_port);
@@ -38,7 +37,7 @@ impl Connecter {
 
 impl Future for Connecter {
     type Item = TcpStream;
-    type Error = String;
+    type Error = ConnecterError;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         match self.lookup.as_mut().map(|lookup| lookup.poll()) {
@@ -49,11 +48,11 @@ impl Future for Connecter {
                     Some(srvs) =>
                         self.srvs = Some(srvs.to_stream(self.resolver.clone())),
                     None =>
-                        return Err("No SRV records".to_owned()),
+                        return Err(ConnecterError::NoSrv),
                 }
             },
             Some(Err(e)) =>
-                return Err(format!("{}", e)),
+                return Err(e.into()),
         }
 
         match self.srvs.as_mut().map(|srv| srv.poll()) {
@@ -71,7 +70,7 @@ impl Future for Connecter {
                 }
             },
             Some(Err(e)) =>
-                return Err(format!("{}", e)),
+                return Err(e.into()),
         }
 
         let mut connected_stream = None;
@@ -101,7 +100,7 @@ impl Future for Connecter {
             self.srvs.is_none() &&
             self.connects.is_empty()
         {
-            return Err("All connection attempts failed".to_owned());
+            return Err(ConnecterError::AllFailed);
         }
 
         Ok(Async::NotReady)

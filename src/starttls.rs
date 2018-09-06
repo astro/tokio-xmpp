@@ -10,6 +10,7 @@ use jid::Jid;
 
 use xmpp_codec::Packet;
 use xmpp_stream::XMPPStream;
+use Error;
 
 /// XMPP TLS XML namespace
 pub const NS_XMPP_TLS: &str = "urn:ietf:params:xml:ns:xmpp-tls";
@@ -48,7 +49,7 @@ impl<S: AsyncRead + AsyncWrite> StartTlsClient<S> {
 
 impl<S: AsyncRead + AsyncWrite> Future for StartTlsClient<S> {
     type Item = TlsStream<S>;
-    type Error = String;
+    type Error = Error;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         let old_state = replace(&mut self.state, StartTlsClientState::Invalid);
@@ -65,7 +66,7 @@ impl<S: AsyncRead + AsyncWrite> Future for StartTlsClient<S> {
                     Ok(Async::NotReady) =>
                         (StartTlsClientState::SendStartTls(send), Ok(Async::NotReady)),
                     Err(e) =>
-                        (StartTlsClientState::SendStartTls(send), Err(format!("{}", e))),
+                        (StartTlsClientState::SendStartTls(send), Err(e.into())),
                 },
             StartTlsClientState::AwaitProceed(mut xmpp_stream) =>
                 match xmpp_stream.poll() {
@@ -87,7 +88,7 @@ impl<S: AsyncRead + AsyncWrite> Future for StartTlsClient<S> {
                     Ok(_) =>
                         (StartTlsClientState::AwaitProceed(xmpp_stream), Ok(Async::NotReady)),
                     Err(e) =>
-                        (StartTlsClientState::AwaitProceed(xmpp_stream),  Err(format!("{}", e))),
+                        (StartTlsClientState::AwaitProceed(xmpp_stream),  Err(Error::Protocol(e.into()))),
                 },
             StartTlsClientState::StartingTls(mut connect) =>
                 match connect.poll() {
@@ -96,7 +97,7 @@ impl<S: AsyncRead + AsyncWrite> Future for StartTlsClient<S> {
                     Ok(Async::NotReady) =>
                         (StartTlsClientState::StartingTls(connect), Ok(Async::NotReady)),
                     Err(e) =>
-                        (StartTlsClientState::Invalid, Err(format!("{}", e))),
+                        (StartTlsClientState::Invalid, Err(e.into())),
                 },
             StartTlsClientState::Invalid =>
                 unreachable!(),

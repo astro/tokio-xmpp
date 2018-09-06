@@ -5,6 +5,7 @@ use xmpp_parsers::component::Handshake;
 
 use xmpp_codec::Packet;
 use xmpp_stream::XMPPStream;
+use {Error, AuthError};
 
 const NS_JABBER_COMPONENT_ACCEPT: &str = "jabber:component:accept";
 
@@ -19,7 +20,8 @@ enum ComponentAuthState<S: AsyncWrite> {
 }
 
 impl<S: AsyncWrite> ComponentAuth<S> {
-    pub fn new(stream: XMPPStream<S>, password: String) -> Result<Self, String> {
+    // TODO: doesn't have to be a Result<> actually
+    pub fn new(stream: XMPPStream<S>, password: String) -> Result<Self, Error> {
         // FIXME: huge hack, shouldn’t be an element!
         let sid = stream.stream_features.name().to_owned();
         let mut this = ComponentAuth {
@@ -42,7 +44,7 @@ impl<S: AsyncWrite> ComponentAuth<S> {
 
 impl<S: AsyncRead + AsyncWrite> Future for ComponentAuth<S> {
     type Item = XMPPStream<S>;
-    type Error = String;
+    type Error = Error;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         let state = replace(&mut self.state, ComponentAuthState::Invalid);
@@ -59,7 +61,7 @@ impl<S: AsyncRead + AsyncWrite> Future for ComponentAuth<S> {
                         Ok(Async::NotReady)
                     },
                     Err(e) =>
-                        Err(format!("{}", e)),
+                        Err(e.into()),
                 },
             ComponentAuthState::WaitRecv(mut stream) =>
                 match stream.poll() {
@@ -72,8 +74,7 @@ impl<S: AsyncRead + AsyncWrite> Future for ComponentAuth<S> {
                     Ok(Async::Ready(Some(Packet::Stanza(ref stanza))))
                         if stanza.is("error", "http://etherx.jabber.org/streams") =>
                     {
-                        let e = "Authentication failure";
-                        Err(e.to_owned())
+                        Err(AuthError::ComponentFail.into())
                     },
                     Ok(Async::Ready(event)) => {
                         println!("ComponentAuth ignore {:?}", event);
@@ -84,7 +85,7 @@ impl<S: AsyncRead + AsyncWrite> Future for ComponentAuth<S> {
                         Ok(Async::NotReady)
                     },
                     Err(e) =>
-                        Err(format!("{}", e)),
+                        Err(e.into()),
                 },
             ComponentAuthState::Invalid =>
                 unreachable!(),

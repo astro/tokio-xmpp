@@ -3,11 +3,11 @@
 //! allowed to use any user and resource identifiers in their stanzas.
 use std::mem::replace;
 use std::str::FromStr;
-use std::error::Error;
+use std::error::Error as StdError;
 use tokio_core::reactor::Handle;
 use tokio_core::net::TcpStream;
 use tokio_io::{AsyncRead, AsyncWrite};
-use futures::{Future, Stream, Poll, Async, Sink, StartSend, AsyncSink};
+use futures::{Future, Stream, Poll, Async, Sink, StartSend, AsyncSink, done};
 use minidom::Element;
 use jid::{Jid, JidParseError};
 
@@ -15,6 +15,7 @@ use super::xmpp_codec::Packet;
 use super::xmpp_stream;
 use super::happy_eyeballs::Connecter;
 use super::event::Event;
+use super::Error;
 
 mod auth;
 use self::auth::ComponentAuth;
@@ -32,7 +33,7 @@ const NS_JABBER_COMPONENT_ACCEPT: &str = "jabber:component:accept";
 enum ComponentState {
     Invalid,
     Disconnected,
-    Connecting(Box<Future<Item=XMPPStream, Error=String>>),
+    Connecting(Box<Future<Item=XMPPStream, Error=Error>>),
     Connected(XMPPStream),
 }
 
@@ -47,43 +48,39 @@ impl Component {
         let connect = Self::make_connect(jid.clone(), password, server, port, handle);
         Ok(Component {
             jid,
-            state: ComponentState::Connecting(connect),
+            state: ComponentState::Connecting(Box::new(connect)),
         })
     }
 
-    fn make_connect(jid: Jid, password: String, server: &str, port: u16, handle: Handle) -> Box<Future<Item=XMPPStream, Error=String>> {
+    fn make_connect(jid: Jid, password: String, server: &str, port: u16, handle: Handle) -> impl Future<Item=XMPPStream, Error=Error> {
         let jid1 = jid.clone();
         let password = password;
-        Box::new(
-            Connecter::from_lookup(handle, server, "_xmpp-component._tcp", port)
-                .expect("Connector::from_lookup")
-                .and_then(move |tcp_stream| {
-                    xmpp_stream::XMPPStream::start(tcp_stream, jid1, NS_JABBER_COMPONENT_ACCEPT.to_owned())
-                    .map_err(|e| format!("{}", e))
-                }).and_then(move |xmpp_stream| {
-                    Self::auth(xmpp_stream, password).expect("auth")
-                }).and_then(|xmpp_stream| {
-                    // println!("Bound to {}", xmpp_stream.jid);
-                    Ok(xmpp_stream)
-                })
-        )
+        done(Connecter::from_lookup(handle, server, "_xmpp-component._tcp", port))
+            .map_err(Error::Domain)
+            .and_then(|connecter| connecter
+                      .map_err(Error::Connection)
+            ).and_then(move |tcp_stream| {
+                xmpp_stream::XMPPStream::start(tcp_stream, jid1, NS_JABBER_COMPONENT_ACCEPT.to_owned())
+            }).and_then(move |xmpp_stream| {
+                Self::auth(xmpp_stream, password).expect("auth")
+            })
     }
 
-    fn auth<S: AsyncRead + AsyncWrite>(stream: xmpp_stream::XMPPStream<S>, password: String) -> Result<ComponentAuth<S>, String> {
+    fn auth<S: AsyncRead + AsyncWrite>(stream: xmpp_stream::XMPPStream<S>, password: String) -> Result<ComponentAuth<S>, Error> {
         ComponentAuth::new(stream, password)
     }
 }
 
 impl Stream for Component {
     type Item = Event;
-    type Error = String;
+    type Error = Error;
 
     fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
         let state = replace(&mut self.state, ComponentState::Invalid);
 
         match state {
             ComponentState::Invalid =>
-                Err("invalid client state".to_owned()),
+                Err(Error::InvalidState),
             ComponentState::Disconnected =>
                 Ok(Async::Ready(None)),
             ComponentState::Connecting(mut connect) => {
@@ -106,7 +103,7 @@ impl Stream for Component {
                     Ok(Async::NotReady) => (),
                     Ok(Async::Ready(())) => (),
                     Err(e) =>
-                        return Err(e.description().to_owned()),
+                        return Err(e.into()),
                 };
 
                 // Poll stream
@@ -129,7 +126,7 @@ impl Stream for Component {
                         Ok(Async::NotReady)
                     },
                     Err(e) =>
-                        Err(e.description().to_owned()),
+                        Err(e.into()),
                 }
             },
         }
