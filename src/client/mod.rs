@@ -64,10 +64,8 @@ impl Client {
                       done(Connecter::from_lookup(&domain, Some("_xmpp-client._tcp"), 5222))
                       .map_err(Error::Connection)
             )
-            .and_then(|connecter|
-                      connecter
-                      .map_err(Error::Connection)
-            ).and_then(move |tcp_stream|
+            .flatten()
+            .and_then(move |tcp_stream|
                       xmpp_stream::XMPPStream::start(tcp_stream, jid1, NS_JABBER_CLIENT.to_owned())
             ).and_then(|xmpp_stream| {
                 if Self::can_starttls(&xmpp_stream) {

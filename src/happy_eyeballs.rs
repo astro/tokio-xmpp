@@ -8,7 +8,7 @@ use tokio::net::{ConnectFuture, TcpStream};
 use trust_dns_resolver::{IntoName, Name, ResolverFuture, error::ResolveError};
 use trust_dns_resolver::lookup::SrvLookupFuture;
 use trust_dns_resolver::lookup_ip::LookupIpFuture;
-use ConnecterError;
+use {Error, ConnecterError};
 
 enum State {
     AwaitResolver(Box<Future<Item = ResolverFuture, Error = ResolveError> + Send>),
@@ -24,6 +24,7 @@ pub struct Connecter {
     domain: Name,
     state: State,
     targets: VecDeque<(Name, u16)>,
+    error: Option<Error>,
 }
 
 impl Connecter {
@@ -38,6 +39,7 @@ impl Connecter {
                 domain: "nohost".into_name()?,
                 state: State::Connecting(None, vec![connect]),
                 targets: VecDeque::new(),
+                error: None,
             });
         }
 
@@ -56,19 +58,20 @@ impl Connecter {
             domain: domain.into_name()?,
             state,
             targets: VecDeque::new(),
+            error: None,
         })
     }
 }
 
 impl Future for Connecter {
     type Item = TcpStream;
-    type Error = ConnecterError;
+    type Error = Error;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         let state = mem::replace(&mut self.state, State::Invalid);
         match state {
             State::AwaitResolver(mut resolver_future) => {
-                match resolver_future.poll()? {
+                match resolver_future.poll().map_err(ConnecterError::Resolve)? {
                     Async::NotReady => {
                         self.state = State::AwaitResolver(resolver_future);
                         Ok(Async::NotReady)
@@ -122,14 +125,12 @@ impl Future for Connecter {
                 }
             }
             State::Connecting(resolver, mut connects) => {
-                if resolver.is_some() &&
-                    connects.len() == 0 &&
-                    self.targets.len() > 0 {
-                        let resolver = resolver.unwrap();
-                        let (host, port) = self.targets.pop_front().unwrap();
-                        let ip_lookup = resolver.lookup_ip(host);
-                        self.state = State::ResolveTarget(resolver, ip_lookup, port);
-                        self.poll()
+                if resolver.is_some() && connects.len() == 0 && self.targets.len() > 0 {
+                    let resolver = resolver.unwrap();
+                    let (host, port) = self.targets.pop_front().unwrap();
+                    let ip_lookup = resolver.lookup_ip(host);
+                    self.state = State::ResolveTarget(resolver, ip_lookup, port);
+                    self.poll()
                 } else if connects.len() > 0 {
                     let mut success = None;
                     connects.retain(|connect| {
@@ -139,7 +140,12 @@ impl Future for Connecter {
                                 success = Some(connection);
                                 false
                             }
-                            Err(_) => false,
+                            Err(e) => {
+                                if self.error.is_none() {
+                                    self.error = Some(e.into());
+                                }
+                                false
+                            },
                         }
                     });
                     match success {
@@ -151,7 +157,13 @@ impl Future for Connecter {
                         },
                     }
                 } else {
-                    Err(ConnecterError::AllFailed)
+                    // All targets tried
+                    match self.error.take() {
+                        None =>
+                            Err(ConnecterError::AllFailed.into()),
+                        Some(e) =>
+                            Err(e),
+                    }
                 }
             }
             State::ResolveTarget(resolver, mut ip_lookup, port) => {
@@ -168,7 +180,10 @@ impl Future for Connecter {
                         self.state = State::Connecting(Some(resolver), connects);
                         self.poll()
                     }
-                    Err(_) => {
+                    Err(e) => {
+                        if self.error.is_none() {
+                            self.error = Some(ConnecterError::Resolve(e).into());
+                        }
                         // ignore, next…
                         self.state = State::Connecting(Some(resolver), vec![]);
                         self.poll()

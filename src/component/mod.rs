@@ -55,7 +55,6 @@ impl Component {
         let password = password;
         done(Connecter::from_lookup(server, None, port))
             .flatten()
-            .map_err(Error::Connection)
             .and_then(move |tcp_stream| {
                 xmpp_stream::XMPPStream::start(tcp_stream, jid1, NS_JABBER_COMPONENT_ACCEPT.to_owned())
             }).and_then(move |xmpp_stream| {
