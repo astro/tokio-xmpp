@@ -1,7 +1,7 @@
 [package]
 name = "tokio-xmpp"
-version = "0.1.2"
-authors = ["Astro <astro@spaceboyz.net>", "Emmanuel Gil Peyrot <linkmauve@linkmauve.fr>", "pep <pep+code@bouah.net>"]
+version = "0.2.0"
+authors = ["Astro <astro@spaceboyz.net>", "Emmanuel Gil Peyrot <linkmauve@linkmauve.fr>", "pep <pep+code@bouah.net>", "O01eg <o01eg@yandex.ru>"]
 description = "Asynchronous XMPP for Rust with tokio"
 license = "MPL-2.0"
 homepage = "https://github.com/astro/tokio-xmpp"
@@ -15,7 +15,7 @@ futures = "0.1"
 tokio = "0.1"
 tokio-io = "0.1"
 tokio-codec = "0.1"
-bytes = "0.4.9"
+bytes = "0.4"
 xml5ever = "0.12"
 minidom = "0.9"
 native-tls = "0.2"
