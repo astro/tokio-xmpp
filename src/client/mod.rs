@@ -62,7 +62,6 @@ impl Client {
             .map_err(|_| Error::Idna)
             .and_then(|domain|
                       done(Connecter::from_lookup(&domain, Some("_xmpp-client._tcp"), 5222))
-                      .map_err(Error::Connection)
             )
             .flatten()
             .and_then(move |tcp_stream|

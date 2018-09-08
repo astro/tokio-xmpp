@@ -1,4 +1,5 @@
 use std::mem;
+use std::io::Error as IoError;
 use std::net::SocketAddr;
 use std::collections::BTreeMap;
 use std::collections::VecDeque;
@@ -8,6 +9,8 @@ use tokio::net::{ConnectFuture, TcpStream};
 use trust_dns_resolver::{IntoName, Name, ResolverFuture, error::ResolveError};
 use trust_dns_resolver::lookup::SrvLookupFuture;
 use trust_dns_resolver::lookup_ip::LookupIpFuture;
+use trust_dns_resolver::system_conf;
+use trust_dns_resolver::config::LookupIpStrategy;
 use {Error, ConnecterError};
 
 enum State {
@@ -27,8 +30,14 @@ pub struct Connecter {
     error: Option<Error>,
 }
 
+fn resolver_future() -> Result<Box<Future<Item = ResolverFuture, Error = ResolveError> + Send>, IoError> {
+    let (conf, mut opts) = system_conf::read_system_conf()?;
+    opts.ip_strategy = LookupIpStrategy::Ipv4AndIpv6;
+    Ok(ResolverFuture::new(conf, opts))
+}
+
 impl Connecter {
-    pub fn from_lookup(domain: &str, srv: Option<&str>, fallback_port: u16) -> Result<Connecter, ConnecterError> {
+    pub fn from_lookup(domain: &str, srv: Option<&str>, fallback_port: u16) -> Result<Connecter, Error> {
         if let Ok(ip) = domain.parse() {
             // use specified IP address, not domain name, skip the whole dns part
             let connect =
@@ -36,18 +45,21 @@ impl Connecter {
             return Ok(Connecter {
                 fallback_port,
                 srv_domain: None,
-                domain: "nohost".into_name()?,
+                domain: "nohost".into_name()
+                    .map_err(ConnecterError::Dns)?,
                 state: State::Connecting(None, vec![connect]),
                 targets: VecDeque::new(),
                 error: None,
             });
         }
 
-        let resolver_future = ResolverFuture::from_system_conf()?;
-        let state = State::AwaitResolver(resolver_future);
+        let state = State::AwaitResolver(resolver_future()?);
         let srv_domain = match srv {
             Some(srv) =>
-                Some(format!("{}.{}.", srv, domain).into_name()?),
+                Some(format!("{}.{}.", srv, domain)
+                     .into_name()
+                     .map_err(ConnecterError::Dns)?
+                ),
             None =>
                 None,
         };
@@ -55,7 +67,8 @@ impl Connecter {
         Ok(Connecter {
             fallback_port,
             srv_domain,
-            domain: domain.into_name()?,
+            domain: domain.into_name()
+                .map_err(ConnecterError::Dns)?,
             state,
             targets: VecDeque::new(),
             error: None,
