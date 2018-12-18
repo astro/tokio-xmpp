@@ -1,11 +1,11 @@
+use futures::{sink, Async, Future, Poll, Stream};
 use std::mem::replace;
-use futures::{Future, Poll, Async, sink, Stream};
 use tokio_io::{AsyncRead, AsyncWrite};
 use xmpp_parsers::component::Handshake;
 
 use crate::xmpp_codec::Packet;
 use crate::xmpp_stream::XMPPStream;
-use crate::{Error, AuthError};
+use crate::{AuthError, Error};
 
 const NS_JABBER_COMPONENT_ACCEPT: &str = "jabber:component:accept";
 
@@ -29,7 +29,7 @@ impl<S: AsyncWrite> ComponentAuth<S> {
         };
         this.send(
             stream,
-            Handshake::from_password_and_stream_id(&password, &sid)
+            Handshake::from_password_and_stream_id(&password, &sid),
         );
         Ok(this)
     }
@@ -50,45 +50,40 @@ impl<S: AsyncRead + AsyncWrite> Future for ComponentAuth<S> {
         let state = replace(&mut self.state, ComponentAuthState::Invalid);
 
         match state {
-            ComponentAuthState::WaitSend(mut send) =>
-                match send.poll() {
-                    Ok(Async::Ready(stream)) => {
-                        self.state = ComponentAuthState::WaitRecv(stream);
-                        self.poll()
-                    },
-                    Ok(Async::NotReady) => {
-                        self.state = ComponentAuthState::WaitSend(send);
-                        Ok(Async::NotReady)
-                    },
-                    Err(e) =>
-                        Err(e)?
-                },
-            ComponentAuthState::WaitRecv(mut stream) =>
-                match stream.poll() {
-                    Ok(Async::Ready(Some(Packet::Stanza(ref stanza))))
-                        if stanza.is("handshake", NS_JABBER_COMPONENT_ACCEPT) =>
-                    {
-                        self.state = ComponentAuthState::Invalid;
-                        Ok(Async::Ready(stream))
-                    },
-                    Ok(Async::Ready(Some(Packet::Stanza(ref stanza))))
-                        if stanza.is("error", "http://etherx.jabber.org/streams") =>
-                    {
-                        Err(AuthError::ComponentFail.into())
-                    },
-                    Ok(Async::Ready(event)) => {
-                        println!("ComponentAuth ignore {:?}", event);
-                        Ok(Async::NotReady)
-                    },
-                    Ok(_) => {
-                        self.state = ComponentAuthState::WaitRecv(stream);
-                        Ok(Async::NotReady)
-                    },
-                    Err(e) =>
-                        Err(e)?
-                },
-            ComponentAuthState::Invalid =>
-                unreachable!(),
+            ComponentAuthState::WaitSend(mut send) => match send.poll() {
+                Ok(Async::Ready(stream)) => {
+                    self.state = ComponentAuthState::WaitRecv(stream);
+                    self.poll()
+                }
+                Ok(Async::NotReady) => {
+                    self.state = ComponentAuthState::WaitSend(send);
+                    Ok(Async::NotReady)
+                }
+                Err(e) => Err(e)?,
+            },
+            ComponentAuthState::WaitRecv(mut stream) => match stream.poll() {
+                Ok(Async::Ready(Some(Packet::Stanza(ref stanza))))
+                    if stanza.is("handshake", NS_JABBER_COMPONENT_ACCEPT) =>
+                {
+                    self.state = ComponentAuthState::Invalid;
+                    Ok(Async::Ready(stream))
+                }
+                Ok(Async::Ready(Some(Packet::Stanza(ref stanza))))
+                    if stanza.is("error", "http://etherx.jabber.org/streams") =>
+                {
+                    Err(AuthError::ComponentFail.into())
+                }
+                Ok(Async::Ready(event)) => {
+                    println!("ComponentAuth ignore {:?}", event);
+                    Ok(Async::NotReady)
+                }
+                Ok(_) => {
+                    self.state = ComponentAuthState::WaitRecv(stream);
+                    Ok(Async::NotReady)
+                }
+                Err(e) => Err(e)?,
+            },
+            ComponentAuthState::Invalid => unreachable!(),
         }
     }
 }

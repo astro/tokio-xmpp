@@ -1,22 +1,21 @@
+use futures::{sink, Async, Future, Poll, Stream};
+use minidom::Element;
+use sasl::client::mechanisms::{Anonymous, Plain, Scram};
+use sasl::client::Mechanism;
+use sasl::common::scram::{Sha1, Sha256};
+use sasl::common::Credentials;
 use std::mem::replace;
 use std::str::FromStr;
-use futures::{Future, Poll, Async, sink, Stream};
 use tokio_io::{AsyncRead, AsyncWrite};
-use sasl::common::Credentials;
-use sasl::common::scram::{Sha1, Sha256};
-use sasl::client::Mechanism;
-use sasl::client::mechanisms::{Scram, Plain, Anonymous};
-use minidom::Element;
-use xmpp_parsers::sasl::{Auth, Challenge, Response, Success, Failure, Mechanism as XMPPMechanism};
 use try_from::TryFrom;
+use xmpp_parsers::sasl::{Auth, Challenge, Failure, Mechanism as XMPPMechanism, Response, Success};
 
+use crate::stream_start::StreamStart;
 use crate::xmpp_codec::Packet;
 use crate::xmpp_stream::XMPPStream;
-use crate::stream_start::StreamStart;
-use crate::{Error, AuthError, ProtocolError};
+use crate::{AuthError, Error, ProtocolError};
 
 const NS_XMPP_SASL: &str = "urn:ietf:params:xml:ns:xmpp-sasl";
-
 
 pub struct ClientAuth<S: AsyncWrite> {
     state: ClientAuthState<S>,
@@ -39,8 +38,9 @@ impl<S: AsyncWrite> ClientAuth<S> {
             Box::new(Anonymous::new()),
         ];
 
-        let mech_names: Vec<String> =
-            stream.stream_features.get_child("mechanisms", NS_XMPP_SASL)
+        let mech_names: Vec<String> = stream
+            .stream_features
+            .get_child("mechanisms", NS_XMPP_SASL)
             .ok_or(AuthError::NoMechanism)?
             .children()
             .filter(|child| child.is("mechanism", NS_XMPP_SASL))
@@ -52,20 +52,18 @@ impl<S: AsyncWrite> ClientAuth<S> {
             let name = mech.name().to_owned();
             if mech_names.iter().any(|name1| *name1 == name) {
                 // println!("SASL mechanism selected: {:?}", name);
-                let initial = mech.initial()
-                    .map_err(AuthError::Sasl)?;
+                let initial = mech.initial().map_err(AuthError::Sasl)?;
                 let mut this = ClientAuth {
                     state: ClientAuthState::Invalid,
                     mechanism: mech,
                 };
-                let mechanism = XMPPMechanism::from_str(&name)
-                    .map_err(ProtocolError::Parsers)?;
+                let mechanism = XMPPMechanism::from_str(&name).map_err(ProtocolError::Parsers)?;
                 this.send(
                     stream,
                     Auth {
                         mechanism,
                         data: initial,
-                    }
+                    },
                 );
                 return Ok(this);
             }
@@ -89,61 +87,55 @@ impl<S: AsyncRead + AsyncWrite> Future for ClientAuth<S> {
         let state = replace(&mut self.state, ClientAuthState::Invalid);
 
         match state {
-            ClientAuthState::WaitSend(mut send) =>
-                match send.poll() {
-                    Ok(Async::Ready(stream)) => {
-                        self.state = ClientAuthState::WaitRecv(stream);
+            ClientAuthState::WaitSend(mut send) => match send.poll() {
+                Ok(Async::Ready(stream)) => {
+                    self.state = ClientAuthState::WaitRecv(stream);
+                    self.poll()
+                }
+                Ok(Async::NotReady) => {
+                    self.state = ClientAuthState::WaitSend(send);
+                    Ok(Async::NotReady)
+                }
+                Err(e) => Err(e)?,
+            },
+            ClientAuthState::WaitRecv(mut stream) => match stream.poll() {
+                Ok(Async::Ready(Some(Packet::Stanza(stanza)))) => {
+                    if let Ok(challenge) = Challenge::try_from(stanza.clone()) {
+                        let response = self
+                            .mechanism
+                            .response(&challenge.data)
+                            .map_err(AuthError::Sasl)?;
+                        self.send(stream, Response { data: response });
                         self.poll()
-                    },
-                    Ok(Async::NotReady) => {
-                        self.state = ClientAuthState::WaitSend(send);
-                        Ok(Async::NotReady)
-                    },
-                    Err(e) =>
-                        Err(e)?,
-                },
-            ClientAuthState::WaitRecv(mut stream) =>
-                match stream.poll() {
-                    Ok(Async::Ready(Some(Packet::Stanza(stanza)))) => {
-                        if let Ok(challenge) = Challenge::try_from(stanza.clone()) {
-                            let response = self.mechanism.response(&challenge.data)
-                                .map_err(AuthError::Sasl)?;
-                            self.send(stream, Response { data: response });
-                            self.poll()
-                        } else if let Ok(_) = Success::try_from(stanza.clone()) {
-                            let start = stream.restart();
-                            self.state = ClientAuthState::Start(start);
-                            self.poll()
-                        } else if let Ok(failure) = Failure::try_from(stanza) {
-                            Err(AuthError::Fail(failure.defined_condition))?
-                        } else {
-                            Ok(Async::NotReady)
-                        }
-                    }
-                    Ok(Async::Ready(_event)) => {
-                        // println!("ClientAuth ignore {:?}", _event);
-                        Ok(Async::NotReady)
-                    },
-                    Ok(_) => {
-                        self.state = ClientAuthState::WaitRecv(stream);
-                        Ok(Async::NotReady)
-                    },
-                    Err(e) =>
-                        Err(ProtocolError::Parser(e))?
-                },
-            ClientAuthState::Start(mut start) =>
-                match start.poll() {
-                    Ok(Async::Ready(stream)) =>
-                        Ok(Async::Ready(stream)),
-                    Ok(Async::NotReady) => {
+                    } else if let Ok(_) = Success::try_from(stanza.clone()) {
+                        let start = stream.restart();
                         self.state = ClientAuthState::Start(start);
+                        self.poll()
+                    } else if let Ok(failure) = Failure::try_from(stanza) {
+                        Err(AuthError::Fail(failure.defined_condition))?
+                    } else {
                         Ok(Async::NotReady)
-                    },
-                    Err(e) =>
-                        Err(e)
-                },
-            ClientAuthState::Invalid =>
-                unreachable!(),
+                    }
+                }
+                Ok(Async::Ready(_event)) => {
+                    // println!("ClientAuth ignore {:?}", _event);
+                    Ok(Async::NotReady)
+                }
+                Ok(_) => {
+                    self.state = ClientAuthState::WaitRecv(stream);
+                    Ok(Async::NotReady)
+                }
+                Err(e) => Err(ProtocolError::Parser(e))?,
+            },
+            ClientAuthState::Start(mut start) => match start.poll() {
+                Ok(Async::Ready(stream)) => Ok(Async::Ready(stream)),
+                Ok(Async::NotReady) => {
+                    self.state = ClientAuthState::Start(start);
+                    Ok(Async::NotReady)
+                }
+                Err(e) => Err(e),
+            },
+            ClientAuthState::Invalid => unreachable!(),
         }
     }
 }

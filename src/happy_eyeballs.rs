@@ -1,18 +1,18 @@
-use std::mem;
-use std::io::Error as IoError;
-use std::net::SocketAddr;
+use crate::{ConnecterError, Error};
+use futures::{Async, Future, Poll};
+use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::collections::VecDeque;
-use std::cell::RefCell;
-use futures::{Future, Poll, Async};
-use tokio::net::TcpStream;
+use std::io::Error as IoError;
+use std::mem;
+use std::net::SocketAddr;
 use tokio::net::tcp::ConnectFuture;
-use trust_dns_resolver::{IntoName, Name, ResolverFuture, error::ResolveError};
+use tokio::net::TcpStream;
+use trust_dns_resolver::config::LookupIpStrategy;
 use trust_dns_resolver::lookup::SrvLookupFuture;
 use trust_dns_resolver::lookup_ip::LookupIpFuture;
 use trust_dns_resolver::system_conf;
-use trust_dns_resolver::config::LookupIpStrategy;
-use crate::{Error, ConnecterError};
+use trust_dns_resolver::{error::ResolveError, IntoName, Name, ResolverFuture};
 
 enum State {
     AwaitResolver(Box<Future<Item = ResolverFuture, Error = ResolveError> + Send>),
@@ -31,23 +31,26 @@ pub struct Connecter {
     error: Option<Error>,
 }
 
-fn resolver_future() -> Result<Box<Future<Item = ResolverFuture, Error = ResolveError> + Send>, IoError> {
+fn resolver_future(
+) -> Result<Box<Future<Item = ResolverFuture, Error = ResolveError> + Send>, IoError> {
     let (conf, mut opts) = system_conf::read_system_conf()?;
     opts.ip_strategy = LookupIpStrategy::Ipv4AndIpv6;
     Ok(ResolverFuture::new(conf, opts))
 }
 
 impl Connecter {
-    pub fn from_lookup(domain: &str, srv: Option<&str>, fallback_port: u16) -> Result<Connecter, Error> {
+    pub fn from_lookup(
+        domain: &str,
+        srv: Option<&str>,
+        fallback_port: u16,
+    ) -> Result<Connecter, Error> {
         if let Ok(ip) = domain.parse() {
             // use specified IP address, not domain name, skip the whole dns part
-            let connect =
-                RefCell::new(TcpStream::connect(&SocketAddr::new(ip, fallback_port)));
+            let connect = RefCell::new(TcpStream::connect(&SocketAddr::new(ip, fallback_port)));
             return Ok(Connecter {
                 fallback_port,
                 srv_domain: None,
-                domain: "nohost".into_name()
-                    .map_err(ConnecterError::Dns)?,
+                domain: "nohost".into_name().map_err(ConnecterError::Dns)?,
                 state: State::Connecting(None, vec![connect]),
                 targets: VecDeque::new(),
                 error: None,
@@ -56,20 +59,18 @@ impl Connecter {
 
         let state = State::AwaitResolver(resolver_future()?);
         let srv_domain = match srv {
-            Some(srv) =>
-                Some(format!("{}.{}.", srv, domain)
-                     .into_name()
-                     .map_err(ConnecterError::Dns)?
-                ),
-            None =>
-                None,
+            Some(srv) => Some(
+                format!("{}.{}.", srv, domain)
+                    .into_name()
+                    .map_err(ConnecterError::Dns)?,
+            ),
+            None => None,
         };
 
         Ok(Connecter {
             fallback_port,
             srv_domain,
-            domain: domain.into_name()
-                .map_err(ConnecterError::Dns)?,
+            domain: domain.into_name().map_err(ConnecterError::Dns)?,
             state,
             targets: VecDeque::new(),
             error: None,
@@ -97,8 +98,8 @@ impl Future for Connecter {
                                 self.state = State::ResolveSrv(resolver, srv_lookup);
                             }
                             None => {
-                                self.targets =
-                                    [(self.domain.clone(), self.fallback_port)].into_iter()
+                                self.targets = [(self.domain.clone(), self.fallback_port)]
+                                    .into_iter()
                                     .cloned()
                                     .collect();
                                 self.state = State::Connecting(Some(resolver), vec![]);
@@ -115,22 +116,19 @@ impl Future for Connecter {
                         Ok(Async::NotReady)
                     }
                     Ok(Async::Ready(srv_result)) => {
-                        let srv_map: BTreeMap<_, _> =
-                            srv_result.iter()
+                        let srv_map: BTreeMap<_, _> = srv_result
+                            .iter()
                             .map(|srv| (srv.priority(), (srv.target().clone(), srv.port())))
                             .collect();
-                        let targets =
-                            srv_map.into_iter()
-                            .map(|(_, tp)| tp)
-                            .collect();
+                        let targets = srv_map.into_iter().map(|(_, tp)| tp).collect();
                         self.targets = targets;
                         self.state = State::Connecting(Some(resolver), vec![]);
                         self.poll()
                     }
                     Err(_) => {
                         // ignore, fallback
-                        self.targets =
-                            [(self.domain.clone(), self.fallback_port)].into_iter()
+                        self.targets = [(self.domain.clone(), self.fallback_port)]
+                            .into_iter()
                             .cloned()
                             .collect();
                         self.state = State::Connecting(Some(resolver), vec![]);
@@ -147,36 +145,31 @@ impl Future for Connecter {
                     self.poll()
                 } else if connects.len() > 0 {
                     let mut success = None;
-                    connects.retain(|connect| {
-                        match connect.borrow_mut().poll() {
-                            Ok(Async::NotReady) => true,
-                            Ok(Async::Ready(connection)) => {
-                                success = Some(connection);
-                                false
+                    connects.retain(|connect| match connect.borrow_mut().poll() {
+                        Ok(Async::NotReady) => true,
+                        Ok(Async::Ready(connection)) => {
+                            success = Some(connection);
+                            false
+                        }
+                        Err(e) => {
+                            if self.error.is_none() {
+                                self.error = Some(e.into());
                             }
-                            Err(e) => {
-                                if self.error.is_none() {
-                                    self.error = Some(e.into());
-                                }
-                                false
-                            },
+                            false
                         }
                     });
                     match success {
-                        Some(connection) =>
-                            Ok(Async::Ready(connection)),
+                        Some(connection) => Ok(Async::Ready(connection)),
                         None => {
                             self.state = State::Connecting(resolver, connects);
                             Ok(Async::NotReady)
-                        },
+                        }
                     }
                 } else {
                     // All targets tried
                     match self.error.take() {
-                        None =>
-                            Err(ConnecterError::AllFailed.into()),
-                        Some(e) =>
-                            Err(e),
+                        None => Err(ConnecterError::AllFailed.into()),
+                        Some(e) => Err(e),
                     }
                 }
             }
@@ -187,8 +180,8 @@ impl Future for Connecter {
                         Ok(Async::NotReady)
                     }
                     Ok(Async::Ready(ip_result)) => {
-                        let connects =
-                            ip_result.iter()
+                        let connects = ip_result
+                            .iter()
                             .map(|ip| RefCell::new(TcpStream::connect(&SocketAddr::new(ip, port))))
                             .collect();
                         self.state = State::Connecting(Some(resolver), connects);
@@ -204,8 +197,7 @@ impl Future for Connecter {
                     }
                 }
             }
-            _ => panic!("")
+            _ => panic!(""),
         }
     }
 }
-

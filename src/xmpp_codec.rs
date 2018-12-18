@@ -1,22 +1,22 @@
 //! XML stream parser for XMPP
 
-use std;
-use std::default::Default;
-use std::iter::FromIterator;
-use std::cell::RefCell;
-use std::rc::Rc;
-use std::fmt::Write;
-use std::str::from_utf8;
-use std::io;
-use std::collections::HashMap;
-use std::collections::vec_deque::VecDeque;
-use tokio_codec::{Encoder, Decoder};
+use crate::{ParseError, ParserError};
+use bytes::{BufMut, BytesMut};
 use minidom::Element;
-use xml5ever::tokenizer::{XmlTokenizer, TokenSink, Token, Tag, TagKind};
-use xml5ever::interface::Attribute;
-use bytes::{BytesMut, BufMut};
 use quick_xml::Writer as EventWriter;
-use crate::{ParserError, ParseError};
+use std;
+use std::cell::RefCell;
+use std::collections::vec_deque::VecDeque;
+use std::collections::HashMap;
+use std::default::Default;
+use std::fmt::Write;
+use std::io;
+use std::iter::FromIterator;
+use std::rc::Rc;
+use std::str::from_utf8;
+use tokio_codec::{Decoder, Encoder};
+use xml5ever::interface::Attribute;
+use xml5ever::tokenizer::{Tag, TagKind, Token, TokenSink, XmlTokenizer};
 
 /// Anything that can be sent or received on an XMPP/XML stream
 #[derive(Debug)]
@@ -72,17 +72,21 @@ impl ParserSink {
 
     fn handle_start_tag(&mut self, tag: Tag) {
         let mut nss = HashMap::new();
-        let is_prefix_xmlns = |attr: &Attribute| attr.name.prefix.as_ref()
-            .map(|prefix| prefix.eq_str_ignore_ascii_case("xmlns"))
-            .unwrap_or(false);
+        let is_prefix_xmlns = |attr: &Attribute| {
+            attr.name
+                .prefix
+                .as_ref()
+                .map(|prefix| prefix.eq_str_ignore_ascii_case("xmlns"))
+                .unwrap_or(false)
+        };
         for attr in &tag.attrs {
             match attr.name.local.as_ref() {
                 "xmlns" => {
                     nss.insert(None, attr.value.as_ref().to_owned());
-                },
+                }
                 prefix if is_prefix_xmlns(attr) => {
-                        nss.insert(Some(prefix.to_owned()), attr.value.as_ref().to_owned());
-                    },
+                    nss.insert(Some(prefix.to_owned()), attr.value.as_ref().to_owned());
+                }
                 _ => (),
             }
         }
@@ -90,10 +94,9 @@ impl ParserSink {
 
         let el = {
             let mut el_builder = Element::builder(tag.name.local.as_ref());
-            if let Some(el_ns) = self.lookup_ns(
-                &tag.name.prefix.map(|prefix|
-                                     prefix.as_ref().to_owned())
-            ) {
+            if let Some(el_ns) =
+                self.lookup_ns(&tag.name.prefix.map(|prefix| prefix.as_ref().to_owned()))
+            {
                 el_builder = el_builder.ns(el_ns);
             }
             for attr in &tag.attrs {
@@ -101,21 +104,20 @@ impl ParserSink {
                     "xmlns" => (),
                     _ if is_prefix_xmlns(attr) => (),
                     _ => {
-                        el_builder = el_builder.attr(
-                            attr.name.local.as_ref(),
-                            attr.value.as_ref()
-                        );
-                    },
+                        el_builder = el_builder.attr(attr.name.local.as_ref(), attr.value.as_ref());
+                    }
                 }
             }
             el_builder.build()
         };
 
         if self.stack.is_empty() {
-            let attrs = HashMap::from_iter(
-                tag.attrs.iter()
-                    .map(|attr| (attr.name.local.as_ref().to_owned(), attr.value.as_ref().to_owned()))
-            );
+            let attrs = HashMap::from_iter(tag.attrs.iter().map(|attr| {
+                (
+                    attr.name.local.as_ref().to_owned(),
+                    attr.value.as_ref().to_owned(),
+                )
+            }));
             self.push_queue(Packet::StreamStart(attrs));
         }
 
@@ -128,15 +130,13 @@ impl ParserSink {
 
         match self.stack.len() {
             // </stream:stream>
-            0 =>
-                self.push_queue(Packet::StreamEnd),
+            0 => self.push_queue(Packet::StreamEnd),
             // </stanza>
-            1 =>
-                self.push_queue(Packet::Stanza(el)),
+            1 => self.push_queue(Packet::Stanza(el)),
             len => {
                 let parent = &mut self.stack[len - 1];
                 parent.append_child(el);
-            },
+            }
         }
     }
 }
@@ -145,32 +145,26 @@ impl TokenSink for ParserSink {
     fn process_token(&mut self, token: Token) {
         match token {
             Token::TagToken(tag) => match tag.kind {
-                TagKind::StartTag =>
-                    self.handle_start_tag(tag),
-                TagKind::EndTag =>
-                    self.handle_end_tag(),
+                TagKind::StartTag => self.handle_start_tag(tag),
+                TagKind::EndTag => self.handle_end_tag(),
                 TagKind::EmptyTag => {
                     self.handle_start_tag(tag);
                     self.handle_end_tag();
-                },
-                TagKind::ShortTag =>
-                    self.push_queue_error(ParserError::ShortTag),
+                }
+                TagKind::ShortTag => self.push_queue_error(ParserError::ShortTag),
             },
-            Token::CharacterTokens(tendril) =>
-                match self.stack.len() {
-                    0 | 1 =>
-                        self.push_queue(Packet::Text(tendril.into())),
-                    len => {
-                        let el = &mut self.stack[len - 1];
-                        el.append_text_node(tendril);
-                    },
-                },
-            Token::EOFToken =>
-                self.push_queue(Packet::StreamEnd),
+            Token::CharacterTokens(tendril) => match self.stack.len() {
+                0 | 1 => self.push_queue(Packet::Text(tendril.into())),
+                len => {
+                    let el = &mut self.stack[len - 1];
+                    el.append_text_node(tendril);
+                }
+            },
+            Token::EOFToken => self.push_queue(Packet::StreamEnd),
             Token::ParseError(s) => {
                 // println!("ParseError: {:?}", s);
                 self.push_queue_error(ParserError::Parse(ParseError(s)));
-            },
+            }
             _ => (),
         }
     }
@@ -219,23 +213,22 @@ impl Decoder for XMPPCodec {
     type Error = ParserError;
 
     fn decode(&mut self, buf: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
-        let buf1: Box<AsRef<[u8]>> =
-            if ! self.buf.is_empty() && ! buf.is_empty() {
-                let mut prefix = std::mem::replace(&mut self.buf, vec![]);
-                prefix.extend_from_slice(buf.take().as_ref());
-                Box::new(prefix)
-            } else {
-                Box::new(buf.take())
-            };
+        let buf1: Box<AsRef<[u8]>> = if !self.buf.is_empty() && !buf.is_empty() {
+            let mut prefix = std::mem::replace(&mut self.buf, vec![]);
+            prefix.extend_from_slice(buf.take().as_ref());
+            Box::new(prefix)
+        } else {
+            Box::new(buf.take())
+        };
         let buf1 = buf1.as_ref().as_ref();
         match from_utf8(buf1) {
             Ok(s) => {
-                if ! s.is_empty() {
+                if !s.is_empty() {
                     // println!("<< {}", s);
                     let tendril = FromIterator::from_iter(s.chars());
                     self.parser.feed(tendril);
                 }
-            },
+            }
             // Remedies for truncated utf8
             Err(e) if e.valid_up_to() >= buf1.len() - 3 => {
                 // Prepare all the valid data
@@ -249,17 +242,16 @@ impl Decoder for XMPPCodec {
                 self.buf.extend_from_slice(&buf1[e.valid_up_to()..]);
 
                 return result;
-            },
+            }
             Err(e) => {
                 // println!("error {} at {}/{} in {:?}", e, e.valid_up_to(), buf1.len(), buf1);
                 return Err(ParserError::Utf8(e));
-            },
+            }
         }
 
         match self.queue.borrow_mut().pop_front() {
             None => Ok(None),
-            Some(result) =>
-                result.map(|pkt| Some(pkt)),
+            Some(result) => result.map(|pkt| Some(pkt)),
         }
     }
 
@@ -284,8 +276,7 @@ impl Encoder for XMPPCodec {
                 let mut buf = String::new();
                 write!(buf, "<stream:stream").unwrap();
                 for (name, value) in start_attrs {
-                    write!(buf, " {}=\"{}\"", escape(&name), escape(&value))
-                        .unwrap();
+                    write!(buf, " {}=\"{}\"", escape(&name), escape(&value)).unwrap();
                     if name == "xmlns" {
                         self.ns = Some(value);
                     }
@@ -293,17 +284,17 @@ impl Encoder for XMPPCodec {
                 write!(buf, ">\n").unwrap();
 
                 print!(">> {}", buf);
-                write!(dst, "{}", buf)
-                    .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))
-            },
+                write!(dst, "{}", buf).map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))
+            }
             Packet::Stanza(stanza) => {
-                stanza.write_to_inner(&mut EventWriter::new(WriteBytes::new(dst)))
+                stanza
+                    .write_to_inner(&mut EventWriter::new(WriteBytes::new(dst)))
                     .and_then(|_| {
                         // println!(">> {:?}", dst);
                         Ok(())
                     })
                     .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, format!("{}", e)))
-            },
+            }
             Packet::Text(text) => {
                 write_text(&text, dst)
                     .and_then(|_| {
@@ -311,9 +302,9 @@ impl Encoder for XMPPCodec {
                         Ok(())
                     })
                     .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, format!("{}", e)))
-            },
+            }
             // TODO: Implement all
-            _ => Ok(())
+            _ => Ok(()),
         }
     }
 }
@@ -334,7 +325,7 @@ pub fn escape(input: &str) -> String {
             '>' => result.push_str("&gt;"),
             '\'' => result.push_str("&apos;"),
             '"' => result.push_str("&quot;"),
-            o => result.push(o)
+            o => result.push(o),
         }
     }
     result
@@ -363,7 +354,6 @@ impl<'a> std::io::Write for WriteBytes<'a> {
         Ok(())
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -405,10 +395,7 @@ mod tests {
         b.put(r">");
         let r = c.decode(&mut b);
         assert!(match r {
-            Ok(Some(Packet::Stanza(ref el)))
-                if el.name() == "test"
-                && el.text() == "ß"
-                => true,
+            Ok(Some(Packet::Stanza(ref el))) if el.name() == "test" && el.text() == "ß" => true,
             _ => false,
         });
     }
@@ -436,10 +423,7 @@ mod tests {
         b.put(&b"\x9f</test>"[..]);
         let r = c.decode(&mut b);
         assert!(match r {
-            Ok(Some(Packet::Stanza(ref el)))
-                if el.name() == "test"
-                && el.text() == "ß"
-                => true,
+            Ok(Some(Packet::Stanza(ref el))) if el.name() == "test" && el.text() == "ß" => true,
             _ => false,
         });
     }
@@ -447,8 +431,8 @@ mod tests {
     /// By default, encode() only get's a BytesMut that has 8kb space reserved.
     #[test]
     fn test_large_stanza() {
-        use std::io::Cursor;
         use futures::{Future, Sink};
+        use std::io::Cursor;
         use tokio_codec::FramedWrite;
         let framed = FramedWrite::new(Cursor::new(vec![]), XMPPCodec::new());
         let mut text = "".to_owned();
@@ -456,15 +440,12 @@ mod tests {
             text = text + "A";
         }
         let stanza = Element::builder("message")
-            .append(
-                Element::builder("body")
-                    .append(&text)
-                    .build()
-            )
+            .append(Element::builder("body").append(&text).build())
             .build();
-        let framed = framed.send(Packet::Stanza(stanza))
-            .wait()
-            .expect("send");
-        assert_eq!(framed.get_ref().get_ref(), &("<message><body>".to_owned() + &text + "</body></message>").as_bytes());
+        let framed = framed.send(Packet::Stanza(stanza)).wait().expect("send");
+        assert_eq!(
+            framed.get_ref().get_ref(),
+            &("<message><body>".to_owned() + &text + "</body></message>").as_bytes()
+        );
     }
 }

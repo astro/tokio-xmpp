@@ -1,11 +1,11 @@
-use std::io::Error as IoError;
-use std::error::Error as StdError;
-use std::str::Utf8Error;
-use std::borrow::Cow;
-use std::fmt;
 use native_tls::Error as TlsError;
-use trust_dns_resolver::error::ResolveError;
+use std::borrow::Cow;
+use std::error::Error as StdError;
+use std::fmt;
+use std::io::Error as IoError;
+use std::str::Utf8Error;
 use trust_dns_proto::error::ProtoError;
+use trust_dns_resolver::error::ResolveError;
 
 use xmpp_parsers::error::Error as ParsersError;
 use xmpp_parsers::sasl::DefinedCondition as SaslDefinedCondition;

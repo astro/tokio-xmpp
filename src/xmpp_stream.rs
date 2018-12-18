@@ -1,14 +1,14 @@
 //! `XMPPStream` is the common container for all XMPP network connections
 
-use futures::{Poll, Stream, Sink, StartSend};
 use futures::sink::Send;
-use tokio_io::{AsyncRead, AsyncWrite};
-use tokio_codec::Framed;
-use minidom::Element;
+use futures::{Poll, Sink, StartSend, Stream};
 use jid::Jid;
+use minidom::Element;
+use tokio_codec::Framed;
+use tokio_io::{AsyncRead, AsyncWrite};
 
-use crate::xmpp_codec::{XMPPCodec, Packet};
 use crate::stream_start::StreamStart;
+use crate::xmpp_codec::{Packet, XMPPCodec};
 
 /// <stream:stream> namespace
 pub const NS_XMPP_STREAM: &str = "http://etherx.jabber.org/streams";
@@ -30,11 +30,18 @@ pub struct XMPPStream<S> {
 
 impl<S: AsyncRead + AsyncWrite> XMPPStream<S> {
     /// Constructor
-    pub fn new(jid: Jid,
-               stream: Framed<S, XMPPCodec>,
-               ns: String,
-               stream_features: Element) -> Self {
-        XMPPStream { jid, stream, stream_features, ns }
+    pub fn new(
+        jid: Jid,
+        stream: Framed<S, XMPPCodec>,
+        ns: String,
+        stream_features: Element,
+    ) -> Self {
+        XMPPStream {
+            jid,
+            stream,
+            stream_features,
+            ns,
+        }
     }
 
     /// Send a `<stream:stream>` start tag

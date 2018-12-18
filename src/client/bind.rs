@@ -1,9 +1,9 @@
+use futures::{sink, Async, Future, Poll, Stream};
 use std::mem::replace;
-use futures::{Future, Poll, Async, sink, Stream};
 use tokio_io::{AsyncRead, AsyncWrite};
-use xmpp_parsers::iq::{Iq, IqType};
-use xmpp_parsers::bind::Bind;
 use try_from::TryFrom;
+use xmpp_parsers::bind::Bind;
+use xmpp_parsers::iq::{Iq, IqType};
 
 use crate::xmpp_codec::Packet;
 use crate::xmpp_stream::XMPPStream;
@@ -26,16 +26,17 @@ impl<S: AsyncWrite> ClientBind<S> {
     pub fn new(stream: XMPPStream<S>) -> Self {
         match stream.stream_features.get_child("bind", NS_XMPP_BIND) {
             None =>
-                // No resource binding available,
-                // return the (probably // usable) stream immediately
-                ClientBind::Unsupported(stream),
+            // No resource binding available,
+            // return the (probably // usable) stream immediately
+            {
+                ClientBind::Unsupported(stream)
+            }
             Some(_) => {
                 let resource = stream.jid.resource.clone();
-                let iq = Iq::from_set(Bind::new(resource))
-                    .with_id(BIND_REQ_ID.to_string());
+                let iq = Iq::from_set(Bind::new(resource)).with_id(BIND_REQ_ID.to_string());
                 let send = stream.send_stanza(iq);
                 ClientBind::WaitSend(send)
-            },
+            }
         }
     }
 }
@@ -48,59 +49,51 @@ impl<S: AsyncRead + AsyncWrite> Future for ClientBind<S> {
         let state = replace(self, ClientBind::Invalid);
 
         match state {
-            ClientBind::Unsupported(stream) =>
-                Ok(Async::Ready(stream)),
-            ClientBind::WaitSend(mut send) => {
-                match send.poll() {
-                    Ok(Async::Ready(stream)) => {
-                        replace(self, ClientBind::WaitRecv(stream));
-                        self.poll()
-                    },
-                    Ok(Async::NotReady) => {
-                        replace(self, ClientBind::WaitSend(send));
-                        Ok(Async::NotReady)
-                    },
-                    Err(e) =>
-                        Err(e)?
+            ClientBind::Unsupported(stream) => Ok(Async::Ready(stream)),
+            ClientBind::WaitSend(mut send) => match send.poll() {
+                Ok(Async::Ready(stream)) => {
+                    replace(self, ClientBind::WaitRecv(stream));
+                    self.poll()
                 }
+                Ok(Async::NotReady) => {
+                    replace(self, ClientBind::WaitSend(send));
+                    Ok(Async::NotReady)
+                }
+                Err(e) => Err(e)?,
             },
-            ClientBind::WaitRecv(mut stream) => {
-                match stream.poll() {
-                    Ok(Async::Ready(Some(Packet::Stanza(stanza)))) =>
-                        match Iq::try_from(stanza) {
-                            Ok(iq) => if iq.id == Some(BIND_REQ_ID.to_string()) {
-                                match iq.payload {
-                                    IqType::Result(payload) => {
-                                        payload
-                                            .and_then(|payload| Bind::try_from(payload).ok())
-                                            .map(|bind| match bind {
-                                                Bind::Jid(jid) => stream.jid = jid,
-                                                _ => {}
-                                            });
-                                        Ok(Async::Ready(stream))
-                                    },
-                                    _ =>
-                                        Err(ProtocolError::InvalidBindResponse)?,
+            ClientBind::WaitRecv(mut stream) => match stream.poll() {
+                Ok(Async::Ready(Some(Packet::Stanza(stanza)))) => match Iq::try_from(stanza) {
+                    Ok(iq) => {
+                        if iq.id == Some(BIND_REQ_ID.to_string()) {
+                            match iq.payload {
+                                IqType::Result(payload) => {
+                                    payload
+                                        .and_then(|payload| Bind::try_from(payload).ok())
+                                        .map(|bind| match bind {
+                                            Bind::Jid(jid) => stream.jid = jid,
+                                            _ => {}
+                                        });
+                                    Ok(Async::Ready(stream))
                                 }
-                            } else {
-                                Ok(Async::NotReady)
-                            },
-                            _ => Ok(Async::NotReady),
-                        },
-                    Ok(Async::Ready(_)) => {
-                        replace(self, ClientBind::WaitRecv(stream));
-                        self.poll()
-                    },
-                    Ok(Async::NotReady) => {
-                        replace(self, ClientBind::WaitRecv(stream));
-                        Ok(Async::NotReady)
-                    },
-                    Err(e) =>
-                        Err(e)?,
+                                _ => Err(ProtocolError::InvalidBindResponse)?,
+                            }
+                        } else {
+                            Ok(Async::NotReady)
+                        }
+                    }
+                    _ => Ok(Async::NotReady),
+                },
+                Ok(Async::Ready(_)) => {
+                    replace(self, ClientBind::WaitRecv(stream));
+                    self.poll()
                 }
+                Ok(Async::NotReady) => {
+                    replace(self, ClientBind::WaitRecv(stream));
+                    Ok(Async::NotReady)
+                }
+                Err(e) => Err(e)?,
             },
-            ClientBind::Invalid =>
-                unreachable!(),
+            ClientBind::Invalid => unreachable!(),
         }
     }
 }

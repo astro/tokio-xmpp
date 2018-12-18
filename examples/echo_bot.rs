@@ -1,13 +1,13 @@
+use futures::{future, Sink, Stream};
+use jid::Jid;
+use minidom::Element;
 use std::env::args;
 use std::process::exit;
-use try_from::TryFrom;
-use futures::{Stream, Sink, future};
 use tokio::runtime::current_thread::Runtime;
 use tokio_xmpp::Client;
-use minidom::Element;
-use xmpp_parsers::presence::{Presence, Type as PresenceType, Show as PresenceShow};
-use xmpp_parsers::message::{Message, MessageType, Body};
-use jid::Jid;
+use try_from::TryFrom;
+use xmpp_parsers::message::{Body, Message, MessageType};
+use xmpp_parsers::presence::{Presence, Show as PresenceShow, Type as PresenceType};
 
 fn main() {
     let args: Vec<String> = args().collect();
@@ -38,16 +38,18 @@ fn main() {
 
             let presence = make_presence();
             send(presence);
-        } else if let Some(message) = event.into_stanza()
+        } else if let Some(message) = event
+            .into_stanza()
             .and_then(|stanza| Message::try_from(stanza).ok())
         {
             // This is a message we'll echo
             match (message.from, message.bodies.get("")) {
-                (Some(from), Some(body)) =>
+                (Some(from), Some(body)) => {
                     if message.type_ != MessageType::Error {
                         let reply = make_reply(from, &body.0);
                         send(reply);
-                    },
+                    }
+                }
                 _ => (),
             }
         }
@@ -69,7 +71,9 @@ fn main() {
 fn make_presence() -> Element {
     let mut presence = Presence::new(PresenceType::None);
     presence.show = PresenceShow::Chat;
-    presence.statuses.insert(String::from("en"), String::from("Echoing messages."));
+    presence
+        .statuses
+        .insert(String::from("en"), String::from("Echoing messages."));
     presence.into()
 }
 

@@ -1,14 +1,14 @@
+use futures::{future, Sink, Stream};
+use jid::Jid;
+use minidom::Element;
 use std::env::args;
 use std::process::exit;
 use std::str::FromStr;
-use try_from::TryFrom;
 use tokio::runtime::current_thread::Runtime;
-use futures::{Stream, Sink, future};
 use tokio_xmpp::Component;
-use minidom::Element;
-use xmpp_parsers::presence::{Presence, Type as PresenceType, Show as PresenceShow};
-use xmpp_parsers::message::{Message, MessageType, Body};
-use jid::Jid;
+use try_from::TryFrom;
+use xmpp_parsers::message::{Body, Message, MessageType};
+use xmpp_parsers::presence::{Presence, Show as PresenceShow, Type as PresenceType};
 
 fn main() {
     let args: Vec<String> = args().collect();
@@ -18,7 +18,11 @@ fn main() {
     }
     let jid = &args[1];
     let password = &args[2];
-    let server = &args.get(3).unwrap().parse().unwrap_or("127.0.0.1".to_owned());
+    let server = &args
+        .get(3)
+        .unwrap()
+        .parse()
+        .unwrap_or("127.0.0.1".to_owned());
     let port: u16 = args.get(4).unwrap().parse().unwrap_or(5347u16);
 
     // tokio_core context
@@ -42,18 +46,23 @@ fn main() {
             println!("Online!");
 
             // TODO: replace these hardcoded JIDs
-            let presence = make_presence(Jid::from_str("test@component.linkmauve.fr/coucou").unwrap(), Jid::from_str("linkmauve@linkmauve.fr").unwrap());
+            let presence = make_presence(
+                Jid::from_str("test@component.linkmauve.fr/coucou").unwrap(),
+                Jid::from_str("linkmauve@linkmauve.fr").unwrap(),
+            );
             send(presence);
-        } else if let Some(message) = event.into_stanza()
+        } else if let Some(message) = event
+            .into_stanza()
             .and_then(|stanza| Message::try_from(stanza).ok())
         {
             // This is a message we'll echo
             match (message.from, message.bodies.get("")) {
-                (Some(from), Some(body)) =>
+                (Some(from), Some(body)) => {
                     if message.type_ != MessageType::Error {
                         let reply = make_reply(from, &body.0);
                         send(reply);
-                    },
+                    }
+                }
                 _ => (),
             }
         }
@@ -77,7 +86,9 @@ fn make_presence(from: Jid, to: Jid) -> Element {
     presence.from = Some(from);
     presence.to = Some(to);
     presence.show = PresenceShow::Chat;
-    presence.statuses.insert(String::from("en"), String::from("Echoing messages."));
+    presence
+        .statuses
+        .insert(String::from("en"), String::from("Echoing messages."));
     presence.into()
 }
 
