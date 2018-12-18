@@ -12,7 +12,7 @@ use trust_dns_resolver::lookup::SrvLookupFuture;
 use trust_dns_resolver::lookup_ip::LookupIpFuture;
 use trust_dns_resolver::system_conf;
 use trust_dns_resolver::config::LookupIpStrategy;
-use {Error, ConnecterError};
+use crate::{Error, ConnecterError};
 
 enum State {
     AwaitResolver(Box<Future<Item = ResolverFuture, Error = ResolveError> + Send>),

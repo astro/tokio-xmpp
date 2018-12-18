@@ -10,10 +10,10 @@ use minidom::Element;
 use xmpp_parsers::sasl::{Auth, Challenge, Response, Success, Failure, Mechanism as XMPPMechanism};
 use try_from::TryFrom;
 
-use xmpp_codec::Packet;
-use xmpp_stream::XMPPStream;
-use stream_start::StreamStart;
-use {Error, AuthError, ProtocolError};
+use crate::xmpp_codec::Packet;
+use crate::xmpp_stream::XMPPStream;
+use crate::stream_start::StreamStart;
+use crate::{Error, AuthError, ProtocolError};
 
 const NS_XMPP_SASL: &str = "urn:ietf:params:xml:ns:xmpp-sasl";
 

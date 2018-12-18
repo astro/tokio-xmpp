@@ -8,9 +8,9 @@ use native_tls::TlsConnector as NativeTlsConnector;
 use minidom::Element;
 use jid::Jid;
 
-use xmpp_codec::Packet;
-use xmpp_stream::XMPPStream;
-use Error;
+use crate::xmpp_codec::Packet;
+use crate::xmpp_stream::XMPPStream;
+use crate::Error;
 
 /// XMPP TLS XML namespace
 pub const NS_XMPP_TLS: &str = "urn:ietf:params:xml:ns:xmpp-tls";

@@ -9,6 +9,7 @@ repository = "https://github.com/astro/tokio-xmpp"
 documentation = "https://docs.rs/tokio-xmpp"
 categories = ["asynchronous", "network-programming"]
 keywords = ["xmpp", "tokio"]
+edition = "2018"
 
 [dependencies]
 futures = "0.1"

@@ -5,9 +5,9 @@ use tokio_codec::Framed;
 use jid::Jid;
 use minidom::Element;
 
-use xmpp_codec::{XMPPCodec, Packet};
-use xmpp_stream::XMPPStream;
-use {Error, ProtocolError};
+use crate::xmpp_codec::{XMPPCodec, Packet};
+use crate::xmpp_stream::XMPPStream;
+use crate::{Error, ProtocolError};
 
 const NS_XMPP_STREAM: &str = "http://etherx.jabber.org/streams";
 

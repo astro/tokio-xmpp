@@ -3,9 +3,9 @@ use futures::{Future, Poll, Async, sink, Stream};
 use tokio_io::{AsyncRead, AsyncWrite};
 use xmpp_parsers::component::Handshake;
 
-use xmpp_codec::Packet;
-use xmpp_stream::XMPPStream;
-use {Error, AuthError};
+use crate::xmpp_codec::Packet;
+use crate::xmpp_stream::XMPPStream;
+use crate::{Error, AuthError};
 
 const NS_JABBER_COMPONENT_ACCEPT: &str = "jabber:component:accept";
 

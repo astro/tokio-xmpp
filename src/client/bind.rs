@@ -5,9 +5,9 @@ use xmpp_parsers::iq::{Iq, IqType};
 use xmpp_parsers::bind::Bind;
 use try_from::TryFrom;
 
-use xmpp_codec::Packet;
-use xmpp_stream::XMPPStream;
-use {Error, ProtocolError};
+use crate::xmpp_codec::Packet;
+use crate::xmpp_stream::XMPPStream;
+use crate::{Error, ProtocolError};
 
 const NS_XMPP_BIND: &str = "urn:ietf:params:xml:ns:xmpp-bind";
 const BIND_REQ_ID: &str = "resource-bind";

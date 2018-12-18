@@ -16,7 +16,7 @@ use xml5ever::tokenizer::{XmlTokenizer, TokenSink, Token, Tag, TagKind};
 use xml5ever::interface::Attribute;
 use bytes::{BytesMut, BufMut};
 use quick_xml::Writer as EventWriter;
-use {ParserError, ParseError};
+use crate::{ParserError, ParseError};
 
 /// Anything that can be sent or received on an XMPP/XML stream
 #[derive(Debug)]

@@ -7,8 +7,8 @@ use tokio_codec::Framed;
 use minidom::Element;
 use jid::Jid;
 
-use xmpp_codec::{XMPPCodec, Packet};
-use stream_start::StreamStart;
+use crate::xmpp_codec::{XMPPCodec, Packet};
+use crate::stream_start::StreamStart;
 
 /// <stream:stream> namespace
 pub const NS_XMPP_STREAM: &str = "http://etherx.jabber.org/streams";
