@@ -115,7 +115,7 @@ impl Future for Connecter {
                         Ok(Async::NotReady)
                     }
                     Ok(Async::Ready(srv_result)) => {
-                        let mut srv_map: BTreeMap<_, _> =
+                        let srv_map: BTreeMap<_, _> =
                             srv_result.iter()
                             .map(|srv| (srv.priority(), (srv.target().clone(), srv.port())))
                             .collect();

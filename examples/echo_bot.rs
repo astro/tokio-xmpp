@@ -1,11 +1,3 @@
-extern crate futures;
-extern crate tokio;
-extern crate tokio_xmpp;
-extern crate jid;
-extern crate minidom;
-extern crate xmpp_parsers;
-extern crate try_from;
-
 use std::env::args;
 use std::process::exit;
 use try_from::TryFrom;
